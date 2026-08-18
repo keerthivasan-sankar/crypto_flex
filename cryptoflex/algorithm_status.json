@@ -1,0 +1,21 @@
+{
+  "table_version": "2026.08.1",
+  "note": "Bundled locally with the package release. Updated by maintainers as new NIST/CNSA guidance is published. No network calls are made to fetch this - update by upgrading the cryptoflex package.",
+  "algorithms": {
+    "x25519": {
+      "status": "approved",
+      "quantum_safe": false,
+      "notes": "Well-audited classical ECDH. Not quantum-resistant; retained in hybrid profiles for defense-in-depth against undiscovered PQC flaws."
+    },
+    "mlkem768": {
+      "status": "approved",
+      "quantum_safe": true,
+      "notes": "NIST FIPS 203 (ML-KEM-768). Recommended default PQC component as of table_version 2026.08.1."
+    },
+    "mlkem1024": {
+      "status": "approved",
+      "quantum_safe": true,
+      "notes": "NIST FIPS 203 (ML-KEM-1024). Higher security margin, larger keys/ciphertexts, more compute."
+    }
+  }
+}
