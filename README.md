@@ -77,6 +77,49 @@ This makes `PQCSource` report itself as unavailable immediately; the
 `PolicyEngine` will gracefully fall back to `classical_only` and mark
 the decision as `degraded=True` so your code can detect and log it.
 
+**Faster PQC install on Debian/Ubuntu:** installing `liboqs` itself via
+apt is much faster than letting `liboqs-python` compile it from source
+on first import:
+
+```bash
+sudo apt-get install -y liboqs-dev
+pip install cryptoflex[pqc]
+```
+
+### Refusing to degrade: strict mode
+
+If your application would rather fail loudly than silently ship
+non-quantum-safe protection, pass `require_quantum_safe=True`. This is
+NOT a separate mode to bolt on - it's already the supported way to
+express that requirement:
+
+```python
+from cryptoflex import PolicyEngine, Constraint
+
+engine = PolicyEngine()
+# raises RuntimeError instead of falling back to classical_only if no
+# PQC source is available
+decision = engine.decide(Constraint.BALANCED, require_quantum_safe=True)
+```
+
+`establish_keys()` accepts the same flag directly:
+
+```python
+from cryptoflex import establish_keys
+
+keyset = establish_keys(require_quantum_safe=True)
+```
+
+Even without `require_quantum_safe`, every decision the engine makes
+carries an explicit `degraded: bool` and human-readable `reason` -
+`degraded=True` is never a silent fallback, it's a signal your code can
+check and log:
+
+```python
+if keyset.policy_decision.degraded:
+    logger.warning("cryptoflex degraded: %s", keyset.policy_decision.reason)
+```
+
 ## Quick start
 
 ```python

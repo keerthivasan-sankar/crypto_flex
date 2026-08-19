@@ -78,7 +78,28 @@ class CryptoflexHeader:
     def from_bytes(data: bytes) -> tuple["CryptoflexHeader", int]:
         """Parse a header from the start of `data`. Returns (header,
         bytes_consumed) so the caller can slice off the rest of the
-        payload (e.g. the AEAD ciphertext) that follows."""
+        payload (e.g. the AEAD ciphertext) that follows.
+
+        Any malformed or truncated input - including input that runs out
+        of bytes mid-field - is guaranteed to raise HeaderParseError, and
+        only HeaderParseError. Truncated/corrupted data is an expected,
+        everyday failure mode (a partially-written file, a network glitch,
+        or a hostile input), not a programming error, so callers should
+        only ever need to catch this one exception type here rather than
+        also handling struct.error/IndexError/UnicodeDecodeError from
+        this function's internals.
+        """
+        try:
+            return CryptoflexHeader._parse(data)
+        except HeaderParseError:
+            raise
+        except (IndexError, struct.error, UnicodeDecodeError) as e:
+            raise HeaderParseError(
+                f"malformed or truncated cryptoflex header: {e}"
+            ) from e
+
+    @staticmethod
+    def _parse(data: bytes) -> tuple["CryptoflexHeader", int]:
         if len(data) < 6 or data[:4] != MAGIC:
             raise HeaderParseError("missing or invalid cryptoflex header magic")
 
@@ -95,6 +116,8 @@ class CryptoflexHeader:
         profile_id_len = data[offset]
         offset += 1
         profile_id = data[offset : offset + profile_id_len].decode("utf-8")
+        if len(profile_id) != profile_id_len:
+            raise HeaderParseError("truncated profile_id field")
         offset += profile_id_len
 
         num_components = data[offset]
@@ -105,11 +128,15 @@ class CryptoflexHeader:
             alg_len = data[offset]
             offset += 1
             alg_id = data[offset : offset + alg_len].decode("utf-8")
+            if len(alg_id) != alg_len:
+                raise HeaderParseError("truncated algorithm_id field")
             offset += alg_len
 
             (ct_len,) = struct.unpack(">H", data[offset : offset + 2])
             offset += 2
             ciphertext = data[offset : offset + ct_len]
+            if len(ciphertext) != ct_len:
+                raise HeaderParseError("truncated ciphertext field")
             offset += ct_len
 
             components.append((alg_id, ciphertext))

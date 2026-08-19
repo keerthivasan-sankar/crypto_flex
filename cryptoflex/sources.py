@@ -27,7 +27,7 @@ from __future__ import annotations
 import abc
 import os
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 # --- try to import the real PQC binding; degrade gracefully if absent ---
 #
@@ -42,17 +42,23 @@ from typing import Optional
 # entirely and makes PQCSource report itself as unavailable immediately -
 # this is the supported way to run this library's test suite, or any app
 # built on it, without a pre-built liboqs on hand.
+#
+# `oqs` is typed as `Any` rather than left for mypy to infer as `None`:
+# the module is genuinely absent at runtime in disabled/unavailable cases
+# (guarded by `_require_available()` before every use), but typing it as
+# `None` makes mypy treat every `oqs.KeyEncapsulation(...)` call below as
+# an error, which is noise rather than a real type problem the guard
+# doesn't already cover.
+oqs: Any = None
 if os.environ.get("CRYPTOFLEX_DISABLE_PQC") == "1":
-    oqs = None  # type: ignore
     _OQS_IMPORT_ERROR: Optional[Exception] = RuntimeError(
         "PQC disabled via CRYPTOFLEX_DISABLE_PQC=1"
     )
 else:
     try:
-        import oqs  # type: ignore
+        import oqs  # type: ignore[no-redef]
         _OQS_IMPORT_ERROR = None
     except Exception as e:  # pragma: no cover - exact exception type varies by platform
-        oqs = None  # type: ignore
         _OQS_IMPORT_ERROR = e
 
 from cryptography.hazmat.primitives.asymmetric.x25519 import (
@@ -212,12 +218,12 @@ class PQCSource(SecuritySource):
 
     def decapsulate(self, private_key_handle: object, ciphertext: bytes) -> bytes:
         self._require_available()
-        kem = private_key_handle  # the live oqs.KeyEncapsulation from generate_keypair
+        kem: Any = private_key_handle  # the live oqs.KeyEncapsulation from generate_keypair
         return kem.decap_secret(ciphertext)
 
     def serialize_private(self, private_key_handle: object) -> bytes:
         self._require_available()
-        kem = private_key_handle  # type: ignore
+        kem: Any = private_key_handle
         return kem.export_secret_key()
 
     def deserialize_private(self, data: bytes) -> object:
