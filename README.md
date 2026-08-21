@@ -181,6 +181,15 @@ exercise the real PQC path instead of the test-only `MockPQCSource`.)
 Issues and PRs welcome. Please run the test suite (see above) and
 `pyflakes cryptoflex/` before submitting.
 
+## Independent review
+
+An independent technical review is available in
+[`TECHNICAL_REVIEW.md`](TECHNICAL_REVIEW.md), rating the project
+7.5/10 as of August 2026 — strong architecture and cryptographic
+correctness, held back mainly by the lack of an independent security
+audit. See the note at the top of that file for what's changed since
+it was written.
+
 ## Status
 
 v0.1.0 — early, unaudited. Don't use this for anything where you can't
