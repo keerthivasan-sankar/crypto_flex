@@ -1,4 +1,5 @@
 # cryptoflex
+
 [![tests](https://github.com/keerthivasan-sankar/crypto_flex/actions/workflows/tests.yml/badge.svg)](https://github.com/keerthivasan-sankar/crypto_flex/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
@@ -40,9 +41,16 @@ What this project adds:
    a versioned local risk table — without ever phoning home.
 2. **A local-first target domain** — built for file/desktop tools, not
    network protocols.
-3. **Migration tooling** — a versioned header format so data encrypted
-   under an old profile keeps decrypting after the default policy
-   changes, without a full rewrite of the consuming application.
+3. **Self-describing versioned headers** — every derived key ships with
+   a header recording exactly which profile and which KEM ciphertexts
+   produced it. Decryption always reads *that data's own* header rather
+   than consulting current policy, so data encrypted under an old
+   profile keeps decrypting correctly after the default policy changes.
+   To be precise about scope: this is what makes old data readable, not
+   a migration tool. `cryptoflex` itself has no batch re-encryption,
+   rollback, or backup logic — an application built on top (such as
+   [flexlock](https://github.com/keerthivasan-sankar/flex-lock)) has to
+   implement actual migration workflows itself.
 
 ## Explicitly out of scope
 
@@ -54,6 +62,8 @@ What this project adds:
 - Novel cryptographic primitives — we use `cryptography` (X25519) and
   `liboqs-python` (ML-KEM), both independently audited. We do not
   reimplement crypto math.
+- Migration/re-encryption tooling — see point 3 above. That belongs in
+  an application built on this library, not in the library itself.
 
 ## Installation
 
@@ -163,8 +173,37 @@ recover the combined key, as long as they don't also control the
 unbroken source's ciphertext. This is achieved by binding **all** shared
 secrets **and all** ciphertexts into a single HKDF derivation (see
 `cryptoflex/combiner.py`), following the same shape as
-`draft-ietf-tls-hybrid-design`. We don't invent new combiner math —
-this is orchestration around `cryptography`'s HKDF implementation.
+[RFC 9954](https://www.rfc-editor.org/info/rfc9954) (Hybrid Key
+Exchange in TLS 1.3). We don't invent new combiner math — this is
+orchestration around `cryptography`'s HKDF implementation.
+
+**Note on terminology:** RFC 9954 addresses two-party key *exchange*.
+`cryptoflex`'s own use case (encrypting to your own public key, no
+second party, no network) is asymmetric self-encryption via a KEM —
+the same combiner math applies, but "key exchange" isn't an accurate
+description of what `cryptoflex` itself does end-to-end. Any place in
+this README or the code comments that talks about "key exchange" is
+describing the underlying primitive or the prior art (Signal, Chrome),
+not claiming `cryptoflex` itself performs a two-party exchange.
+
+## Known limitations
+
+- **Per-invocation profile selection isn't pinned across machines.**
+  `PolicyEngine.decide()` picks a profile based on what's available on
+  *the machine running it, right now*. If the same identity/context is
+  used across multiple devices and one lacks a compiled `liboqs`, that
+  device will silently select a weaker profile with no coordination
+  with the others — two machines could end up encrypting under
+  different profiles with nothing to flag the mismatch. There's
+  currently no mechanism to pin a profile to an identity once and keep
+  it consistent across devices; that's on an application built on top
+  of `cryptoflex` to handle, not something this library does today.
+- **No migration tooling**, as covered above — self-describing headers
+  only, no batch re-encryption/rollback/backup logic in this library.
+- **No independent security review.** The combiner construction
+  follows RFC 9954's shape, and `TECHNICAL_REVIEW.md` contains a
+  detailed self-assessment, but neither is a substitute for an actual
+  audit of this specific implementation by an unaffiliated party.
 
 ## Running tests
 
@@ -181,14 +220,21 @@ exercise the real PQC path instead of the test-only `MockPQCSource`.)
 Issues and PRs welcome. Please run the test suite (see above) and
 `pyflakes cryptoflex/` before submitting.
 
-## Independent review
+## Self-review
 
-An independent technical review is available in
-[`TECHNICAL_REVIEW.md`](TECHNICAL_REVIEW.md), rating the project
-7.5/10 as of August 2026 — strong architecture and cryptographic
-correctness, held back mainly by the lack of an independent security
-audit. See the note at the top of that file for what's changed since
-it was written.
+A structured, AI-assisted self-review of the codebase is available in
+[`TECHNICAL_REVIEW.md`](TECHNICAL_REVIEW.md). It was generated at the
+project author's request to review the author's own code — **it is
+not an independent third-party audit**, and its numeric scores should
+be read as one structured perspective on the code, not as outside
+validation. See the disclaimer at the top of that file for more detail
+and for what's changed since it was written.
+
+## A note on how this was built
+
+This project was built with AI assistance (design, code, and docs),
+not written solo by hand. Flagging that plainly rather than leaving it
+ambiguous.
 
 ## Status
 
