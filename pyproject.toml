@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cryptoflex"
-version = "0.3.0"
+version = "0.4.1"
 description = "A local-first crypto-agility policy engine: orchestrates classical + post-quantum primitives behind a decision layer, with zero network dependency."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -25,9 +25,9 @@ dev = [
 cryptoflex = "cryptoflex.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/keerthivasan-sankar/testing-"
-Repository = "https://github.com/keerthivasan-sankar/testing-"
-Issues = "https://github.com/keerthivasan-sankar/testing-/issues"
+Homepage = "https://github.com/keerthivasan-sankar/crypto_flex"
+Repository = "https://github.com/keerthivasan-sankar/crypto_flex"
+Issues = "https://github.com/keerthivasan-sankar/crypto_flex/issues"
 
 [tool.setuptools.packages.find]
 include = ["cryptoflex*"]
