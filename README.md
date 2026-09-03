@@ -151,7 +151,11 @@ To enforce a minimum: `decrypt(handles, blob, min_profile="hybrid_standard")`. T
 
 **Error surface.** All decryption failures — wrong key, corrupted header, tampered ciphertext, authentication failure — surface as a single `DecryptionError`. Callers cannot distinguish between failure modes, which eliminates error side-channels.
 
-**Password hardening.** Keystore wrapping uses Argon2id (m=64 MB, t=3, p=4) by default, or Scrypt (N=2¹⁷, r=8, p=1) for compatibility. The algorithm is stored in the file header so the right KDF is always used on import.
+**Password hardening.** Keystore wrapping uses Argon2id (m=32 MB, t=3, p=1) by default, or Scrypt (N=2¹⁷, r=8, p=1) for compatibility. The algorithm is stored in the file header so the right KDF is always used on import.
+
+For complete technical details, see:
+- [Format & Cryptographic Specification](docs/FORMAT_SPECIFICATION.md)
+- [Threat Model & Security Analysis](docs/THREAT_MODEL.md)
 
 ---
 
