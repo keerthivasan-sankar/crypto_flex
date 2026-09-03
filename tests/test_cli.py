@@ -15,8 +15,8 @@ def test_cli_keygen_encrypt_decrypt_info_workflow(tmp_path):
     with open(input_file, "wb") as f:
         f.write(original_text)
 
-    # 1. keygen
-    ret = main(["keygen", "--key", key_file, "--bundle", bundle_file, "--password", password, "--constraint", "fast"])
+    # 1. keygen with argon2id
+    ret = main(["keygen", "--key", key_file, "--bundle", bundle_file, "--password", password, "--kdf", "argon2id", "--constraint", "fast"])
     assert ret == 0
     assert os.path.exists(key_file)
     assert os.path.exists(bundle_file)
@@ -51,8 +51,8 @@ def test_cli_streaming_workflow(tmp_path):
     with open(input_file, "wb") as f:
         f.write(original_data)
 
-    # keygen
-    assert main(["keygen", "--key", key_file, "--bundle", bundle_file, "--password", password]) == 0
+    # keygen with scrypt
+    assert main(["keygen", "--key", key_file, "--bundle", bundle_file, "--password", password, "--kdf", "scrypt"]) == 0
 
     # encrypt --stream
     assert main(["encrypt", "--in", input_file, "--out", enc_file, "--bundle", bundle_file, "--stream"]) == 0
@@ -62,3 +62,37 @@ def test_cli_streaming_workflow(tmp_path):
 
     with open(dec_file, "rb") as f:
         assert f.read() == original_data
+
+
+def test_cli_migrate_workflow(tmp_path):
+    key1_file = str(tmp_path / "key1.cflk")
+    bundle1_file = str(tmp_path / "bundle1.json")
+    key2_file = str(tmp_path / "key2.cflk")
+    bundle2_file = str(tmp_path / "bundle2.json")
+
+    input_file = str(tmp_path / "original.txt")
+    enc1_file = str(tmp_path / "enc1.cflx")
+    migrated_file = str(tmp_path / "migrated.cflx")
+    dec_file = str(tmp_path / "dec_migrated.txt")
+
+    password = "MigrationTestPassword123"
+    content = b"Content to be migrated across bundles"
+
+    with open(input_file, "wb") as f:
+        f.write(content)
+
+    # Keygen 1 & Keygen 2
+    assert main(["keygen", "--key", key1_file, "--bundle", bundle1_file, "--password", password]) == 0
+    assert main(["keygen", "--key", key2_file, "--bundle", bundle2_file, "--password", password]) == 0
+
+    # Encrypt with bundle 1
+    assert main(["encrypt", "--in", input_file, "--out", enc1_file, "--bundle", bundle1_file]) == 0
+
+    # Migrate enc1.cflx -> migrated.cflx using key1 to decrypt and bundle2 to re-encrypt
+    assert main(["migrate", "--in", enc1_file, "--out", migrated_file, "--key", key1_file, "--new-bundle", bundle2_file, "--password", password]) == 0
+
+    # Decrypt migrated file with key2
+    assert main(["decrypt", "--in", migrated_file, "--out", dec_file, "--key", key2_file, "--password", password]) == 0
+
+    with open(dec_file, "rb") as f:
+        assert f.read() == content

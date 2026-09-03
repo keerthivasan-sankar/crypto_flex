@@ -8,13 +8,15 @@ Security Rationale
 -------------------
 Private key handles returned by `establish_keys()` must never be stored as
 plaintext on disk.  This module provides:
-  - Password key derivation using Scrypt (N=2^15, r=8, p=1)
+  - Password key derivation using Argon2id (default) or Scrypt (legacy/compat)
   - KeySet wrapping under AES-256-GCM with a 12-byte random nonce
   - JSON serialization for PublicBundle and encrypted KeySet files
 
 File Formats:
   1. `.bundle.json`: PublicBundle (unencrypted public keys + profile_id)
-  2. `.keyset.cflk`: Password-encrypted KeySet payload containing private keys
+  2. `.keyset.cflk`: Password-encrypted KeySet payload
+     - `CFLA`: Magic for Argon2id KDF (memory_cost=64MB, time_cost=3, parallelism=4)
+     - `CFLK`: Magic for Scrypt KDF (N=2^17, r=8, p=1)
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ import json
 import os
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
 from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 
 from .api import KeySet, PublicBundle
@@ -31,23 +34,37 @@ from .errors import DecryptionError
 from .policy import PolicyDecision
 from .profiles import get_profile
 
-MAGIC_KEYSTORE = b"CFLK"
-SCRYPT_SALT_LEN = 16
+MAGIC_KEYSTORE_SCRYPT = b"CFLK"
+MAGIC_KEYSTORE_ARGON2 = b"CFLA"
+SALT_LEN = 16
 NONCE_LEN = 12
 KEY_LEN = 32
 
 
-def _derive_wrapping_key(password: str | bytes, salt: bytes) -> bytes:
+def _derive_wrapping_key(password: str | bytes, salt: bytes, kdf_type: str = "argon2id") -> bytes:
     if isinstance(password, str):
         password = password.encode("utf-8")
-    kdf = Scrypt(
-        salt=salt,
-        length=KEY_LEN,
-        n=2**15,
-        r=8,
-        p=1,
-    )
-    return kdf.derive(password)
+
+    if kdf_type == "argon2id":
+        kdf = Argon2id(
+            salt=salt,
+            length=KEY_LEN,
+            iterations=3,
+            memory_cost=65536,  # 64 MB
+            lanes=4,
+        )
+        return kdf.derive(password)
+    elif kdf_type == "scrypt":
+        kdf = Scrypt(
+            salt=salt,
+            length=KEY_LEN,
+            n=2**17,  # OWASP minimum
+            r=8,
+            p=1,
+        )
+        return kdf.derive(password)
+    else:
+        raise ValueError(f"unsupported KDF type: '{kdf_type}'")
 
 
 def serialize_public_bundle(bundle: PublicBundle) -> str:
@@ -72,15 +89,18 @@ def deserialize_public_bundle(json_str: str) -> PublicBundle:
     return PublicBundle(profile_id=data["profile_id"], public_keys=public_keys)
 
 
-def export_keyset_bytes(keyset: KeySet, password: str | bytes) -> bytes:
-    """Export a KeySet as encrypted bytes protected by password."""
+def export_keyset_bytes(keyset: KeySet, password: str | bytes, *, use_argon2: bool = True) -> bytes:
+    """Export a KeySet as encrypted bytes protected by password.
+
+    Default KDF is Argon2id (`CFLA` header). Set `use_argon2=False` for Scrypt (`CFLK` header).
+    """
     serialized_privates = []
     for source, priv_handle in zip(keyset.profile.sources, keyset.private_handles):
         alg_id = source.algorithm_id
         try:
             priv_bytes = source.serialize_private(priv_handle)
         except Exception as e:
-            raise TypeError(f"cannot serialize private handle for '{alg_id}': {e}") from e
+            raise DecryptionError(f"cannot serialize private handle for '{alg_id}'") from e
 
         serialized_privates.append(
             {"alg_id": alg_id, "priv_b64": base64.b64encode(priv_bytes).decode("ascii")}
@@ -93,31 +113,45 @@ def export_keyset_bytes(keyset: KeySet, password: str | bytes) -> bytes:
     }
     plaintext = json.dumps(payload).encode("utf-8")
 
-    salt = os.urandom(SCRYPT_SALT_LEN)
+    salt = os.urandom(SALT_LEN)
     nonce = os.urandom(NONCE_LEN)
-    wrapping_key = _derive_wrapping_key(password, salt)
+
+    magic = MAGIC_KEYSTORE_ARGON2 if use_argon2 else MAGIC_KEYSTORE_SCRYPT
+    kdf_type = "argon2id" if use_argon2 else "scrypt"
+
+    wrapping_key = _derive_wrapping_key(password, salt, kdf_type=kdf_type)
 
     aesgcm = AESGCM(wrapping_key)
-    aad = MAGIC_KEYSTORE
-    ct_with_tag = aesgcm.encrypt(nonce, plaintext, aad)
+    ct_with_tag = aesgcm.encrypt(nonce, plaintext, magic)
 
-    return MAGIC_KEYSTORE + salt + nonce + ct_with_tag
+    return magic + salt + nonce + ct_with_tag
 
 
 def import_keyset_bytes(data: bytes, password: str | bytes) -> KeySet:
-    """Import and decrypt a KeySet from bytes using password."""
-    if len(data) < 4 + SCRYPT_SALT_LEN + NONCE_LEN or data[:4] != MAGIC_KEYSTORE:
+    """Import and decrypt a KeySet from bytes using password.
+
+    Supports both Argon2id (`CFLA`) and Scrypt (`CFLK`) keystores.
+    """
+    if len(data) < 4 + SALT_LEN + NONCE_LEN:
         raise DecryptionError("invalid or corrupted keystore format")
 
-    salt = data[4 : 4 + SCRYPT_SALT_LEN]
-    nonce = data[4 + SCRYPT_SALT_LEN : 4 + SCRYPT_SALT_LEN + NONCE_LEN]
-    ct_with_tag = data[4 + SCRYPT_SALT_LEN + NONCE_LEN :]
+    magic = data[:4]
+    if magic == MAGIC_KEYSTORE_ARGON2:
+        kdf_type = "argon2id"
+    elif magic == MAGIC_KEYSTORE_SCRYPT:
+        kdf_type = "scrypt"
+    else:
+        raise DecryptionError("invalid or unrecognized keystore magic")
 
-    wrapping_key = _derive_wrapping_key(password, salt)
+    salt = data[4 : 4 + SALT_LEN]
+    nonce = data[4 + SALT_LEN : 4 + SALT_LEN + NONCE_LEN]
+    ct_with_tag = data[4 + SALT_LEN + NONCE_LEN :]
+
+    wrapping_key = _derive_wrapping_key(password, salt, kdf_type=kdf_type)
     aesgcm = AESGCM(wrapping_key)
 
     try:
-        plaintext = aesgcm.decrypt(nonce, ct_with_tag, MAGIC_KEYSTORE)
+        plaintext = aesgcm.decrypt(nonce, ct_with_tag, magic)
         payload = json.loads(plaintext.decode("utf-8"))
     except Exception as e:
         raise DecryptionError("invalid password or corrupted keystore") from e
