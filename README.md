@@ -171,6 +171,15 @@ python verify_local.py
 
 ---
 
+## Academic Reference
+
+The original architecture and threat model of the policy engine are described in the following paper:
+- [cryptoflex: A Local-First Crypto-Agility Policy Engine for Hybrid](https://figshare.com/articles/journal_contribution/cryptoflex_A_Local-First_Crypto-Agility_Policy_Engine_for_Hybrid/33297369)
+
+> **Note:** This paper reflects an early architecture of the project. The codebase has since evolved significantly (including authenticated headers, Argon2id KDF, memory zeroization, streaming AEAD, and ephemeral forward secrecy), which are not covered in the original manuscript.
+
+---
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
