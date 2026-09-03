@@ -24,6 +24,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import threading
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
@@ -40,31 +41,35 @@ SALT_LEN = 16
 NONCE_LEN = 12
 KEY_LEN = 32
 
+# Cap concurrent memory-hard KDF derivations to 2 to prevent RAM exhaustion DoS
+_KDF_SEMAPHORE = threading.Semaphore(2)
+
 
 def _derive_wrapping_key(password: str | bytes, salt: bytes, kdf_type: str = "argon2id") -> bytes:
     if isinstance(password, str):
         password = password.encode("utf-8")
 
-    if kdf_type == "argon2id":
-        kdf = Argon2id(
-            salt=salt,
-            length=KEY_LEN,
-            iterations=3,
-            memory_cost=32768,  # 32 MB — balanced for multi-tenancy
-            lanes=1,           # single lane to limit per-call RAM ceiling
-        )
-        return kdf.derive(password)
-    elif kdf_type == "scrypt":
-        kdf = Scrypt(
-            salt=salt,
-            length=KEY_LEN,
-            n=2**17,  # OWASP minimum
-            r=8,
-            p=1,
-        )
-        return kdf.derive(password)
-    else:
-        raise ValueError(f"unsupported KDF type: '{kdf_type}'")
+    with _KDF_SEMAPHORE:
+        if kdf_type == "argon2id":
+            kdf = Argon2id(
+                salt=salt,
+                length=KEY_LEN,
+                iterations=3,
+                memory_cost=32768,  # 32 MB — balanced for multi-tenancy
+                lanes=1,           # single lane to limit per-call RAM ceiling
+            )
+            return kdf.derive(password)
+        elif kdf_type == "scrypt":
+            kdf = Scrypt(
+                salt=salt,
+                length=KEY_LEN,
+                n=2**17,  # OWASP minimum
+                r=8,
+                p=1,
+            )
+            return kdf.derive(password)
+        else:
+            raise ValueError(f"unsupported KDF type: '{kdf_type}'")
 
 
 def serialize_public_bundle(bundle: PublicBundle) -> str:

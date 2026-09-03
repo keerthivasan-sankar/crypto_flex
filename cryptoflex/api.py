@@ -299,18 +299,23 @@ def decrypt(
     # --- uniform error boundary ---
     try:
         profile = get_profile(header.profile_id)
-        root_key = _recover_root_key_internal(private_handles, header, profile)
+        raw_root_key = _recover_root_key_internal(private_handles, header, profile)
 
         header_bytes = blob[:consumed]
         aead_payload = blob[consumed:]
 
-        aesgcm = AESGCM(root_key)
-        plaintext = aesgcm.decrypt(header.nonce, aead_payload, header_bytes)
+        # Convert to bytearray for in-place zeroization upon return
+        root_key_buf = bytearray(raw_root_key)
+        del raw_root_key
 
-        # Eagerly drop root key reference to reduce its heap lifetime.
-        del aesgcm, root_key
-
-        return plaintext
+        try:
+            aesgcm = AESGCM(bytes(root_key_buf))
+            plaintext = aesgcm.decrypt(header.nonce, aead_payload, header_bytes)
+            del aesgcm
+            return plaintext
+        finally:
+            from .utils import zeroize
+            zeroize(root_key_buf)
     except (DowngradeError, DecryptionError):
         raise
     except Exception:
