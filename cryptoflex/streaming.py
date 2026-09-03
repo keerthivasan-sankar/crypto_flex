@@ -79,29 +79,31 @@ def encrypt_stream(
         raise ValueError(f"chunk_size {chunk_size} exceeds MAX_CHUNK_SIZE {MAX_CHUNK_SIZE}; reduce to ensure decryptability")
 
     output_stream.write(header_bytes)
-    aesgcm = AESGCM(derived.root_key)
-
-    # Eagerly drop the derived root key object; aesgcm holds the key internally.
+    root_key_buf = bytearray(derived.root_key)
     del derived
 
-    sequence_number = 0
-    while True:
-        chunk = input_stream.read(chunk_size)
-        if not chunk:
-            break
+    try:
+        aesgcm = AESGCM(bytes(root_key_buf))
 
-        nonce = _derive_chunk_nonce(base_nonce, sequence_number)
-        aad = _derive_chunk_aad(header_bytes, sequence_number)
+        sequence_number = 0
+        while True:
+            chunk = input_stream.read(chunk_size)
+            if not chunk:
+                break
 
-        ct_with_tag = aesgcm.encrypt(nonce, chunk, aad)
-        output_stream.write(struct.pack(">I", len(ct_with_tag)))
-        output_stream.write(ct_with_tag)
-        sequence_number += 1
+            nonce = _derive_chunk_nonce(base_nonce, sequence_number)
+            aad = _derive_chunk_aad(header_bytes, sequence_number)
 
-    # Write terminal marker (0-length chunk)
-    output_stream.write(struct.pack(">I", 0))
+            ct_with_tag = aesgcm.encrypt(nonce, chunk, aad)
+            output_stream.write(struct.pack(">I", len(ct_with_tag)))
+            output_stream.write(ct_with_tag)
+            sequence_number += 1
 
-    del aesgcm  # drop AEAD key reference after stream is fully written
+        # Write terminal marker (0-length chunk)
+        output_stream.write(struct.pack(">I", 0))
+    finally:
+        from .utils import zeroize
+        zeroize(root_key_buf)
 
 
 def decrypt_stream(
@@ -151,43 +153,44 @@ def decrypt_stream(
         profile = get_profile(header.profile_id)
         from .api import _recover_root_key_internal
 
-        root_key = _recover_root_key_internal(private_handles, header, profile)
-        aesgcm = AESGCM(root_key)
-
-        # Eagerly drop root key reference; aesgcm holds the key internally.
-        del root_key
+        raw_root_key = _recover_root_key_internal(private_handles, header, profile)
     except (DowngradeError, DecryptionError):
         raise
     except Exception:
         raise DecryptionError("decryption failed")
 
-    # Helper buffer for stream reading
-    class StreamReader:
-        def __init__(self, initial: bytes, stream: BinaryIO):
-            self.buf = bytearray(initial)
-            self.stream = stream
-
-        def read_exact(self, n: int) -> bytes:
-            while len(self.buf) < n:
-                more = self.stream.read(n - len(self.buf) + 4096)
-                if not more:
-                    break
-                self.buf.extend(more)
-
-            if len(self.buf) < n:
-                raise DecryptionError("decryption failed: truncated chunk")
-
-            res = bytes(self.buf[:n])
-            del self.buf[:n]
-            return res
-
-        def has_data(self) -> bool:
-            return len(self.buf) > 0
-
-    reader = StreamReader(unconsumed_initial, input_stream)
-    sequence_number = 0
+    root_key_buf = bytearray(raw_root_key)
+    del raw_root_key
 
     try:
+        aesgcm = AESGCM(bytes(root_key_buf))
+
+        # Helper buffer for stream reading
+        class StreamReader:
+            def __init__(self, initial: bytes, stream: BinaryIO):
+                self.buf = bytearray(initial)
+                self.stream = stream
+
+            def read_exact(self, n: int) -> bytes:
+                while len(self.buf) < n:
+                    more = self.stream.read(n - len(self.buf) + 4096)
+                    if not more:
+                        break
+                    self.buf.extend(more)
+
+                if len(self.buf) < n:
+                    raise DecryptionError("decryption failed: truncated chunk")
+
+                res = bytes(self.buf[:n])
+                del self.buf[:n]
+                return res
+
+            def has_data(self) -> bool:
+                return len(self.buf) > 0
+
+        reader = StreamReader(unconsumed_initial, input_stream)
+        sequence_number = 0
+
         while True:
             length_bytes = reader.read_exact(4)
             (ct_len,) = struct.unpack(">I", length_bytes)
@@ -210,3 +213,6 @@ def decrypt_stream(
         raise
     except Exception:
         raise DecryptionError("decryption failed")
+    finally:
+        from .utils import zeroize
+        zeroize(root_key_buf)
