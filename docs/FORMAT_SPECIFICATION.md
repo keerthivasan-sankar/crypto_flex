@@ -6,40 +6,28 @@ This document provides a formal technical specification of the data formats, key
 
 ## 1. Serialized Header Wire Format (v2)
 
-All integers are encoded in **big-endian (network) byte order**.
+All multi-byte integers are encoded in **big-endian (network) byte order**.
 
-```text
- 0                   1                   2                   3
- 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                       Magic: "CFLX"                           |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-| Version (0x02)| ProfileLen(N) | Profile ID (N bytes UTF-8)... |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-| NumComp (M)   | AlgIDLen_1    | Alg ID 1 (UTF-8)...           |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|      CiphertextLength_1 (uint16)      | Ciphertext 1...       |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-| ... [repeat for component 2..M] ...                           |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                    AES-256-GCM Nonce (12 bytes)               |
-|                                                               |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-```
+### Header Layout
 
-### Field Definitions
+| Offset (Bytes) | Field Name | Type / Length | Description |
+| :---: | :--- | :--- | :--- |
+| `0..3` | **Magic** | 4 bytes (`bytes`) | Fixed magic signature: ASCII `"CFLX"` (`0x43 0x46 0x4C 0x58`) |
+| `4` | **Version** | 1 byte (`uint8`) | Wire format version number: `0x02` |
+| `5` | **Profile Length** | 1 byte (`uint8`) | Byte length $N$ of the profile identifier string |
+| `6 .. 5+N` | **Profile ID** | $N$ bytes (`UTF-8`) | Policy profile string (e.g., `hybrid_standard`, `hybrid_high`, `classical_only`) |
+| `6+N` | **Component Count** | 1 byte (`uint8`) | Number of component key encapsulations $M$ in the header |
+| *Variable* | **Component Entries** | $M$ elements | Array of key encapsulation entries (see sub-table below) |
+| *Header End - 12* | **AES-256-GCM Nonce** | 12 bytes (`bytes`) | Random AEAD nonce generated via `os.urandom(12)` |
 
-1. **Magic (4 bytes)**: `0x43 0x46 0x4C 0x58` (`"CFLX"` in ASCII).
-2. **Version (1 byte)**: `0x02` (v2 wire format).
-3. **Profile ID Length (1 byte)**: Length `N` of the profile identifier.
-4. **Profile ID (`N` bytes)**: UTF-8 string identifying the policy profile (e.g. `hybrid_standard`, `hybrid_high`, `classical_only`).
-5. **Number of Components (1 byte)**: Count `M` of key encapsulation components in the profile.
-6. **Component Entries (`M` items)**:
-   - **Algorithm ID Length (1 byte)**: Length of the component algorithm identifier.
-   - **Algorithm ID (Variable)**: UTF-8 string (e.g. `x25519`, `mlkem768`, `mlkem1024`).
-   - **Ciphertext Length (2 bytes, uint16)**: Length `L` of the encapsulated ciphertext.
-   - **Ciphertext (`L` bytes)**: The raw public key or KEM ciphertext for this component.
-7. **Nonce (12 bytes)**: Cryptographically secure random nonce (`os.urandom(12)`) used for the AEAD payload.
+### Component Entry Layout (Repeated $M$ times)
+
+| Field Name | Type / Length | Description |
+| :--- | :--- | :--- |
+| **Algorithm ID Length** | 1 byte (`uint8`) | Byte length $A$ of the component algorithm identifier |
+| **Algorithm ID** | $A$ bytes (`UTF-8`) | Primitive identifier (e.g., `x25519`, `mlkem768`, `mlkem1024`) |
+| **Ciphertext Length** | 2 bytes (`uint16`, Big-Endian) | Byte length $L$ of the component ciphertext |
+| **Ciphertext** | $L$ bytes (`bytes`) | Public key or KEM ciphertext for this component |
 
 ---
 
@@ -94,55 +82,48 @@ where:
 
 ## 4. Streaming Framing Specification
 
-For files exceeding RAM capacity, `encrypt_stream()` writes a chunked stream format:
+For files exceeding RAM capacity, `encrypt_stream()` processes payloads in sequential chunks.
 
-```text
-+-----------------------+-----------------------+-----------------------+-----
-| HeaderBytes (v2)      | Chunk 1 Length (4B)   | Chunk 1 AEAD Payload  | ...
-+-----------------------+-----------------------+-----------------------+-----
-```
+### Stream Structure Layout
 
-### 4.1 Per-Chunk Framing
+| Sequence Block | Field Name | Type / Length | Description |
+| :--- | :--- | :--- | :--- |
+| **Preamble** | **Stream Header** | Variable | Full v2 `CryptoflexHeader` (Section 1) containing `BaseNonce` |
+| **Chunk $i$ ($i = 0, 1, \dots$)** | **Chunk Payload Length** | 4 bytes (`uint32`, Big-Endian) | Byte length $C$ of chunk AEAD payload (ciphertext + 16B tag) |
+| | **AEAD Payload** | $C$ bytes (`bytes`) | AES-256-GCM encrypted chunk ciphertext + 16-byte tag |
+| **Terminal Marker** | **Stream End Indicator** | 4 bytes (`uint32`) | `0x00000000` (length 0 signals clean end-of-stream) |
 
-For each chunk $i$ ($i = 0, 1, 2, \dots$):
-1. **Chunk Length (4 bytes, uint32)**: Big-endian length of the chunk AEAD payload (ciphertext + 16-byte tag). Default chunk size is 64 KB (65,536 bytes of plaintext).
+### 4.1 Per-Chunk Framing Logic
+
+For each chunk $i$:
+1. **Chunk Payload Length (4 bytes, uint32)**: Big-endian integer. Default chunk size is 64 KB (65,536 bytes of plaintext).
 2. **Per-Chunk Nonce (12 bytes)**:
    $$\text{Nonce}_i = \text{BaseNonce}[0..7] \parallel \text{uint32\_be}(i)$$
-   where $\text{BaseNonce}$ is the 12-byte nonce embedded in the stream header.
 3. **Per-Chunk AAD**:
    $$\text{AAD}_i = \text{HeaderBytes} \parallel \text{uint32\_be}(i)$$
-   Binding the sequence counter $i$ into both the nonce and AAD guarantees that chunk reordering, deletion, insertion, or swapping between streams is detected.
 
-### 4.2 Stream Termination
-
-Clean stream end is indicated by a **Terminal Marker**:
-- **Terminal Length (4 bytes)**: `0x00 0x00 0x00 0x00` (length 0).
-Truncated streams missing the terminal marker fail verification.
+Binding the sequence counter $i$ into both the nonce and AAD guarantees that chunk reordering, deletion, insertion, or swapping across streams is detected.
 
 ---
 
 ## 5. Keystore Format (`.cflk` / `.cfla`)
 
-Encrypted KeySets exported via `export_keyset_bytes()` use password-based key derivation:
+Encrypted KeySets exported via `export_keyset_bytes()` use password-based key derivation.
 
-```text
- 0                   1                   2                   3
- 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                     Magic: "CFLA" or "CFLK"                   |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                     Salt (16 bytes)                           |
-|                                                               |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                     AES-256-GCM Nonce (12 bytes)               |
-|                                                               |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                     AES-256-GCM Payload + 16B Tag             |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-```
+### Keystore Wire Layout
 
-### Magic Identifiers
-- `"CFLA"`: **Argon2id** KDF (default). Parameters: $m=32\,\text{MB}$, $t=3$, $p=1$, salt=16 bytes, key length=32 bytes.
-- `"CFLK"`: **Scrypt** KDF (legacy). Parameters: $N=2^{17}$, $r=8$, $p=1$, salt=16 bytes, key length=32 bytes.
+| Offset (Bytes) | Field Name | Type / Length | Description |
+| :---: | :--- | :--- | :--- |
+| `0..3` | **Keystore Magic** | 4 bytes (`bytes`) | `"CFLA"` for Argon2id KDF, `"CFLK"` for Scrypt KDF |
+| `4..19` | **Salt** | 16 bytes (`bytes`) | Cryptographically random KDF salt |
+| `20..31` | **AES-256-GCM Nonce** | 12 bytes (`bytes`) | Random AEAD nonce for keystore payload |
+| `32 .. End` | **Encrypted KeySet Payload** | Variable (`bytes`) | AES-256-GCM ciphertext + 16-byte authentication tag |
+
+### KDF Parameters
+
+| Magic | Algorithm | Memory ($m$) | Iterations ($t$) | Parallelism ($p$) | Key Length | Salt Length |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| `"CFLA"` | **Argon2id** (Default) | 32 MB (`32768`) | 3 | 1 lane | 32 bytes | 16 bytes |
+| `"CFLK"` | **Scrypt** (Legacy) | $N=2^{17}$ | $r=8$ | $p=1$ | 32 bytes | 16 bytes |
 
 The decrypted JSON payload contains the `profile_id`, the recipient `PublicBundle`, and base64-encoded serialized private key handles.
