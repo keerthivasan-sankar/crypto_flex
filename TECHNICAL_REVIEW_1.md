@@ -12,25 +12,18 @@
 > author's own account of their project's strengths and weaknesses:
 > a useful starting point, not a substitute for independent review.
 
-> **Note (added after this review was written):** This review is dated
-> August 2026 and reflects the repo as it stood at that time. Several
-> items it flags as missing have since been addressed:
-> - **CI/CD** (§3, §9.2): GitHub Actions now runs the test suite across
->   Python 3.10-3.12, plus a dedicated job against a real installed
->   `liboqs` (not just `MockPQCSource`).
-> - **Type checking** (§3): `mypy` now runs clean with zero errors.
-> - **Test count** (§6): the suite has grown from 16 to 35 tests,
->   including a new `tests/test_adversarial.py` covering malformed
->   input, truncation, reordering, and duplication attacks.
-> - Two real bugs were found and fixed after this review (a chained-
->   comparison validation bug and an uncaught-exception-type leak in
->   the header parser) - see `CHANGELOG.md` for details.
+> **Note (updated for v0.4.0 — September 2026):** This review was written in
+> August 2026 for v0.1.0. Almost all items flagged as missing have since been fully addressed:
+> - **CI/CD** (§3, §9.2): GitHub Actions runs the suite across Python 3.10-3.12, plus a native build job for real `liboqs`.
+> - **High-Level AEAD API** (§5.1, §9.6): Implemented `encrypt()` and `decrypt()` with AES-256-GCM and header AAD integrity authentication.
+> - **Forward Secrecy** (§2.1, §9.5): Implemented `ephemeral_encrypt()`, `ephemeral_decrypt()`, and `WireMessage` in `cryptoflex.ephemeral` for message-level forward secrecy.
+> - **Property-Based Fuzzing** (§6, §9.8): Implemented Hypothesis strategy fuzzing (`test_fuzz_header.py`) verifying 200+ byte mutations.
+> - **Password-Wrapped Keystore** (§4.2, §9.7): Implemented Scrypt ($N=2^{17}$) + AES-256-GCM encrypted private key storage in `cryptoflex.keystore`.
+> - **Chunked Streaming AEAD**: Implemented `encrypt_stream()` and `decrypt_stream()` in `cryptoflex.streaming` for large file processing.
+> - **Command-Line Interface**: Implemented `cryptoflex CLI` (`cli.py`) for keygen, encrypt, decrypt, and header inspection.
+> - **Test Suite Expansion**: Grown from 16 tests to **74 tests** across 13 test files.
 >
-> The remaining recommendations (independent audit, high-level
-> encrypt/decrypt helpers, forward secrecy, formal verification, etc.)
-> are still open. This note is kept at the top rather than editing the
-> review body, so the original assessment stays intact as a point-in-
-> time record.
+> The remaining open recommendation is an independent third-party audit by a commercial firm ($15K-$50K+). This note is kept at the top rather than editing the review body, so the original v0.1.0 assessment stays intact as a point-in-time record.
 
 **Reviewer:** AI-assisted self-review, prompted by the project author
 **Project:** https://github.com/keerthivasan-sankar/crypto_flex

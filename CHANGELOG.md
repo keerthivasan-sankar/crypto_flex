@@ -12,45 +12,34 @@ numbers** that don't necessarily move together:
   change for anyone with existing encrypted files and will always be
   called out explicitly here.
 
-## [Unreleased]
+## [0.4.0] - 2026-09-03
 
-### Fixed
-- **Security-relevant:** `recover_root_key()` used a Python chained
-  comparison (`a != b != c`) to validate that the profile's expected
-  source count, the caller's private-handle count, and the header's
-  component count all matched. Chained comparisons don't check "all
-  three differ" - they check `(a != b) and (b != c)` - so a header
-  truncated to drop one component (e.g. an attacker or corruption
-  stripping the PQC ciphertext) could silently pass validation instead
-  of raising, and `recover_root_key()` would derive a key from a
-  subset of the intended sources. Fixed to use `not (a == b == c)`.
-  Covered by `tests/test_integration.py::test_recover_rejects_truncated_header_components`
-  and the broader `tests/test_adversarial.py` module.
-- `CryptoflexHeader.from_bytes()` could raise a bare `struct.error`,
-  `IndexError`, or `UnicodeDecodeError` on truncated/malformed input
-  instead of the library's own `HeaderParseError`, meaning callers
-  who only caught `HeaderParseError` (the documented contract) could
-  still see an unhandled exception from corrupted or partially-written
-  files. All parse failures now consistently raise `HeaderParseError`.
-  Found and covered by `tests/test_adversarial.py::test_truncated_at_every_offset_never_crashes_uncontrolled`.
+### Security Hardening
+- **Bypass-proof assertions**: Replaced `assert nonce is not None` in `api.py` and `streaming.py` with explicit `ValueError` checks, ensuring assertions cannot be bypassed when running Python under optimized mode (`python -O`).
+- **Scrypt Work Factor**: Upgraded Scrypt parameter `N` in `keystore.py` from $2^{15}$ (32,768) to $2^{17}$ (131,072) to comply with OWASP key derivation guidelines against password brute-forcing.
+- **CLI Password Security**: Updated CLI commands to resolve passwords securely via `getpass.getpass()` or `CRYPTOFLEX_PASSWORD` environment variable, making `--password` optional with a process-list visibility warning.
+- **`liboqs` Lifetime Management**: Fixed `sources.py` `PQCSource.encapsulate()` to replace unsupported `with` context manager usage with explicit `try/finally` and `.free()` calls.
+- **Stream Sanity Bounds**: Enforced `MAX_CHUNK_SIZE` (9 MB) and `MAX_HEADER_SIZE` (64 KB) in `streaming.py` to prevent stream buffer crashes and unreadable files.
 
 ### Added
-- `tests/test_adversarial.py`: a dedicated module for malformed-input,
-  truncation, reordering, duplication, and tampering tests, separate
-  from the happy-path integration tests.
-- CI now runs the test suite twice: once with `CRYPTOFLEX_DISABLE_PQC=1`
-  (fast, no compile) and once against a real installed `liboqs`, so the
-  actual PQC code path is exercised in CI, not just `MockPQCSource`.
-- README: documented `require_quantum_safe=True` more prominently
-  (it already existed on `PolicyEngine.decide()` and `establish_keys()`,
-  but wasn't given its own section) and added the faster
-  `apt-get install liboqs-dev` install path for Linux.
+- **Ephemeral Forward-Secret Messaging**: `cryptoflex.ephemeral` module providing `ephemeral_encrypt()`, `ephemeral_decrypt()`, and `WireMessage` dataclass. Fresh root keys are generated and discarded per call via direct encapsulation.
+- **Property-Based Header Fuzzing**: `tests/test_fuzz_header.py` with `hypothesis` strategy testing 200+ byte mutations to verify `CryptoflexHeader.from_bytes()` raises only `HeaderParseError`.
+- **12 Ephemeral Messaging Tests**: `tests/test_ephemeral.py` covering round-trips, uniqueness, tampering, wrong keys, downgrade prevention, empty/large payloads, and multi-message independence.
 
-### Changed
-- Minor `mypy` cleanup in `cryptoflex/sources.py`: the optional `oqs`
-  import is now typed as `Any` instead of being inferred as `None`,
-  removing five false-positive type errors on the guarded PQC call
-  sites. No behavior change.
+## [0.3.0] - 2026-08-31
+
+### Added
+- **Streaming AEAD API**: `encrypt_stream()` and `decrypt_stream()` in `cryptoflex.streaming` for memory-efficient processing of multi-GB payloads using 64 KB chunks with 4-byte sequence counters bound to AES-GCM nonces and AAD.
+- **Password-Wrapped Keystore**: `export_keyset_bytes()` and `import_keyset_bytes()` in `cryptoflex.keystore` to encrypt private key handles under Scrypt + AES-256-GCM.
+- **CLI Tooling**: `cryptoflex.cli` entrypoint for terminal `keygen`, `encrypt`, `decrypt`, and `info` header inspection.
+
+## [0.2.0] - 2026-08-30
+
+### Security Fixes (Discussion #2534)
+- **Header v2 Format**: Added 12-byte random nonce to header; full header byte string authenticated as AES-256-GCM Associated Data (AAD).
+- **Canonical Combiner**: Rewrote `combiner.py` to use length-prefixed injective encoding with profile-specific domain separation (`b"cryptoflex-hybrid-kem-combiner-" + profile_id`) and HKDF-SHA384.
+- **Explicit Downgrade Protection**: Added `strength_level` integers to profiles and `min_profile` parameters to `decrypt()`, raising `DowngradeError` prior to decapsulation.
+- **Uniform Error Boundaries**: All cryptographic failures collapse into generic `DecryptionError` to eliminate timing and error side-channels.
 
 ## [0.1.0] - initial release
 

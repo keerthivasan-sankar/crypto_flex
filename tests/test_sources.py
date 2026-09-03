@@ -40,14 +40,9 @@ def test_mock_pqc_source_round_trip():
 
 
 def test_pqc_source_unavailable_raises_not_crashes():
-    """If liboqs isn't installed/built, PQCSource must report unavailable
-    and raise a clear, catchable error - never crash the process or
-    silently return garbage key material."""
     source = PQCSource("ML-KEM-768")
 
     if source.is_available():
-        # if liboqs happens to be built in this environment, just do the
-        # real round trip instead
         pub, priv = source.generate_keypair()
         enc = source.encapsulate(pub)
         recovered = source.decapsulate(priv, enc.ciphertext)

@@ -1,6 +1,6 @@
 import pytest
 
-from cryptoflex.combiner import combine, combine_from_secrets
+from cryptoflex.combiner import COMBINER_SPEC_VERSION, _encode_info, combine, combine_from_secrets
 from cryptoflex.sources import ClassicalSource, MockPQCSource
 
 
@@ -98,3 +98,25 @@ def test_single_source_combine_is_deterministic_given_same_inputs():
     result1 = combine([("x25519", enc)])
     result2 = combine([("x25519", enc)])
     assert result1.root_key == result2.root_key
+
+
+def test_length_prefixed_encoding_is_injective():
+    """Test that length-prefixed canonical encoding prevents field collision.
+    E.g. alg_id="x" + ct="25519" vs alg_id="x25" + ct="519" producing different info."""
+    info1 = _encode_info(b"ctx", [("x", b"25519")])
+    info2 = _encode_info(b"x25", [("519", b"")])
+    assert info1 != info2
+
+
+def test_different_contexts_produce_different_keys():
+    encapsulations, shared_secrets, ciphertexts = _make_hybrid_encapsulations()
+    k1 = combine(encapsulations, context=b"ctx1").root_key
+    k2 = combine(encapsulations, context=b"ctx2").root_key
+    assert k1 != k2
+
+
+def test_combiner_spec_version_is_bound():
+    encapsulations, _, ciphertexts = _make_hybrid_encapsulations()
+    info_v2 = _encode_info(b"ctx", [("x25519", b"ct")], spec_version=COMBINER_SPEC_VERSION)
+    info_v1 = _encode_info(b"ctx", [("x25519", b"ct")], spec_version=1)
+    assert info_v2 != info_v1

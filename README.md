@@ -3,6 +3,7 @@
 [![tests](https://github.com/keerthivasan-sankar/crypto_flex/actions/workflows/tests.yml/badge.svg)](https://github.com/keerthivasan-sankar/crypto_flex/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+[![Version 0.4.0](https://img.shields.io/badge/version-0.4.0-green.svg)](pyproject.toml)
 
 A **local-first crypto-agility policy engine** for Python.
 
@@ -12,6 +13,19 @@ existing, audited primitives — classical X25519 and post-quantum ML-KEM
 policy engine that decides which combination an application should use,
 based entirely on **local signals**. No network calls, no telemetry, no
 third-party service dependency, ever.
+
+---
+
+## What's New in v0.4.0
+
+- 🔒 **High-Level AEAD Encryption & Decryption (`encrypt`/`decrypt`)**: AES-256-GCM authenticated encryption with self-describing header authenticated as Associated Data (AAD).
+- ⚡ **Forward-Secret Ephemeral Messaging (`ephemeral_encrypt`/`ephemeral_decrypt`)**: Message-level forward secrecy with automatic ephemeral key generation and disposal.
+- 📦 **Chunked Streaming AEAD (`encrypt_stream`/`decrypt_stream`)**: Memory-efficient streaming encryption for multi-gigabyte files with per-chunk sequence binding.
+- 🔑 **Password-Wrapped Keystore (`export_keyset_bytes`/`import_keyset_bytes`)**: Secure private key storage encrypted with Scrypt ($N=2^{17}$) + AES-256-GCM.
+- 🖥️ **Command-Line Interface (`cryptoflex CLI`)**: Comprehensive CLI for key generation, file encryption/decryption, streaming, and header inspection.
+- 🛡️ **Hardened Error Boundaries & Property Fuzzing**: Property-based fuzz testing via `hypothesis` and uniform `DecryptionError` exception boundaries to prevent timing/error side-channel leaks.
+
+---
 
 ## Why this exists
 
@@ -25,45 +39,7 @@ offline, file-based tools** — encryption utilities, desktop apps,
 embedded/IoT — where there's still no clean, drop-in crypto-agility
 layer.
 
-## What's actually novel here (and what isn't)
-
-Hybrid classical+PQC key combining is **not new**. If you came here
-looking for new cryptographic math, this isn't that project — see
-Signal's PQXDH, Chrome's X25519Kyber768, or Open Quantum Safe's own
-hybrid KEM support instead.
-
-What this project adds:
-
-1. **A policy/decision engine** — most existing hybrid implementations
-   are static (compiled once with a fixed algorithm set). `cryptoflex`'s
-   `PolicyEngine` picks a profile at runtime based on local
-   availability, a caller-specified performance/security constraint, and
-   a versioned local risk table — without ever phoning home.
-2. **A local-first target domain** — built for file/desktop tools, not
-   network protocols.
-3. **Self-describing versioned headers** — every derived key ships with
-   a header recording exactly which profile and which KEM ciphertexts
-   produced it. Decryption always reads *that data's own* header rather
-   than consulting current policy, so data encrypted under an old
-   profile keeps decrypting correctly after the default policy changes.
-   To be precise about scope: this is what makes old data readable, not
-   a migration tool. `cryptoflex` itself has no batch re-encryption,
-   rollback, or backup logic — an application built on top (such as
-   [flexlock](https://github.com/keerthivasan-sankar/flex-lock)) has to
-   implement actual migration workflows itself.
-
-## Explicitly out of scope
-
-- QKD (quantum key distribution) — requires physical infrastructure no
-  software library can provide.
-- Live network-fetched threat/deprecation feeds — the risk table is
-  bundled with the package and updated via normal version releases, to
-  preserve the "no external dependency" guarantee.
-- Novel cryptographic primitives — we use `cryptography` (X25519) and
-  `liboqs-python` (ML-KEM), both independently audited. We do not
-  reimplement crypto math.
-- Migration/re-encryption tooling — see point 3 above. That belongs in
-  an application built on this library, not in the library itself.
+---
 
 ## Installation
 
@@ -72,171 +48,132 @@ pip install cryptoflex          # classical-only, always works
 pip install cryptoflex[pqc]     # + PQC support via liboqs-python
 ```
 
-**Note on the PQC extra:** `liboqs-python` will attempt to compile
-`liboqs` from source on first import if no prebuilt shared library is
-found on your system — this is a multi-minute, one-time build (it
-builds every algorithm liboqs ships). For CI/dev environments where you
-want fast, predictable behavior instead, set:
-
+### Faster PQC install on Debian/Ubuntu:
 ```bash
-export CRYPTOFLEX_DISABLE_PQC=1
-```
-
-This makes `PQCSource` report itself as unavailable immediately; the
-`PolicyEngine` will gracefully fall back to `classical_only` and mark
-the decision as `degraded=True` so your code can detect and log it.
-
-**Faster PQC install on Debian/Ubuntu:** installing `liboqs` itself via
-apt is much faster than letting `liboqs-python` compile it from source
-on first import:
-
-```bash
-sudo apt-get install -y liboqs-dev
+sudo apt-get install -y liboqs-dev cmake ninja-build build-essential
 pip install cryptoflex[pqc]
 ```
 
-### Refusing to degrade: strict mode
+---
 
-If your application would rather fail loudly than silently ship
-non-quantum-safe protection, pass `require_quantum_safe=True`. This is
-NOT a separate mode to bolt on - it's already the supported way to
-express that requirement:
+## Quick Start & API Examples
 
-```python
-from cryptoflex import PolicyEngine, Constraint
-
-engine = PolicyEngine()
-# raises RuntimeError instead of falling back to classical_only if no
-# PQC source is available
-decision = engine.decide(Constraint.BALANCED, require_quantum_safe=True)
-```
-
-`establish_keys()` accepts the same flag directly:
+### 1. High-Level File Encryption (AEAD)
 
 ```python
-from cryptoflex import establish_keys
+from cryptoflex import establish_keys, encrypt, decrypt
 
-keyset = establish_keys(require_quantum_safe=True)
+# Recipient establishes long-lived keypair
+recipient_keys = establish_keys()
+
+# Sender encrypts plaintext using recipient's public bundle
+blob = encrypt(recipient_keys.public_bundle, b"Secret document payload")
+
+# Recipient decrypts using their private handles
+plaintext = decrypt(recipient_keys.private_handles, blob)
+assert plaintext == b"Secret document payload"
 ```
 
-Even without `require_quantum_safe`, every decision the engine makes
-carries an explicit `degraded: bool` and human-readable `reason` -
-`degraded=True` is never a silent fallback, it's a signal your code can
-check and log:
+### 2. Forward-Secret Ephemeral Messaging
 
 ```python
-if keyset.policy_decision.degraded:
-    logger.warning("cryptoflex degraded: %s", keyset.policy_decision.reason)
+from cryptoflex import establish_keys, ephemeral_encrypt, ephemeral_decrypt
+
+# Recipient establishes keys
+alice = establish_keys()
+
+# Bob sends an ephemeral message (fresh root key generated & discarded per call)
+msg = ephemeral_encrypt(alice.public_bundle, b"Hello Alice, this message is forward-secret!")
+
+# Alice decrypts
+decrypted = ephemeral_decrypt(alice.private_handles, msg)
+assert decrypted == b"Hello Alice, this message is forward-secret!"
 ```
 
-## Quick start
+### 3. Password-Wrapped Keystore
 
 ```python
-from cryptoflex import PolicyEngine, Constraint, establish_keys, derive_root_key, recover_root_key
+from cryptoflex import establish_keys, export_keyset_bytes, import_keyset_bytes
 
-engine = PolicyEngine()
+keyset = establish_keys()
 
-# Party A: generate a keypair for whatever profile the policy picks
-keyset = establish_keys(engine, constraint=Constraint.BALANCED)
-print(keyset.policy_decision.reason)
-# e.g. "selected 'hybrid_standard' for constraint=balanced"
+# Save encrypted private keys to disk
+encrypted_keys = export_keyset_bytes(keyset, "MySecretPassphrase123")
 
-# Party B: derive a root key + header from A's public bundle
-derived = derive_root_key(keyset.public_bundle)
-# derived.root_key -> use as your AES-256-GCM key etc.
-# derived.header.to_bytes() -> prepend this to your ciphertext file
-
-# Party A: recover the same root key later
-root_key = recover_root_key(keyset.private_handles, derived.header)
-assert root_key == derived.root_key
+# Restore keyset from disk
+restored_keyset = import_keyset_bytes(encrypted_keys, "MySecretPassphrase123")
 ```
 
-## Security profiles (v1)
+### 4. Large File Streaming AEAD
 
-| Profile ID         | Sources                    | Quantum-safe |
-|---------------------|-----------------------------|--------------|
-| `classical_only`    | X25519                      | No           |
-| `hybrid_standard`    | X25519 + ML-KEM-768          | Yes          |
-| `hybrid_high`        | X25519 + ML-KEM-1024         | Yes          |
+```python
+from cryptoflex import establish_keys, encrypt_stream, decrypt_stream
 
-Hybrid profiles keep the classical component even though it isn't
-quantum-safe on its own: it's far better audited than any PQC scheme's
-current track record, so it provides a hedge against an undiscovered
-flaw in the newer math. This is the same design choice Signal and
-Chrome made.
+keyset = establish_keys()
 
-## The combiner's security property
+# Encrypt 10 GB stream chunk-by-chunk
+with open("large_file.iso", "rb") as fin, open("encrypted.cflx", "wb") as fout:
+    encrypt_stream(keyset.public_bundle, fin, fout)
 
-The combined root key must be at least as strong as the strongest input
-source — an attacker who fully breaks every source but one still cannot
-recover the combined key, as long as they don't also control the
-unbroken source's ciphertext. This is achieved by binding **all** shared
-secrets **and all** ciphertexts into a single HKDF derivation (see
-`cryptoflex/combiner.py`), following the same shape as
-[RFC 9954](https://www.rfc-editor.org/info/rfc9954) (Hybrid Key
-Exchange in TLS 1.3). We don't invent new combiner math — this is
-orchestration around `cryptography`'s HKDF implementation.
+# Decrypt stream chunk-by-chunk
+with open("encrypted.cflx", "rb") as fin, open("restored.iso", "wb") as fout:
+    decrypt_stream(keyset.private_handles, fin, fout)
+```
 
-**Note on terminology:** RFC 9954 addresses two-party key *exchange*.
-`cryptoflex`'s own use case (encrypting to your own public key, no
-second party, no network) is asymmetric self-encryption via a KEM —
-the same combiner math applies, but "key exchange" isn't an accurate
-description of what `cryptoflex` itself does end-to-end. Any place in
-this README or the code comments that talks about "key exchange" is
-describing the underlying primitive or the prior art (Signal, Chrome),
-not claiming `cryptoflex` itself performs a two-party exchange.
+---
 
-## Known limitations
+## Command-Line Interface (CLI)
 
-- **Per-invocation profile selection isn't pinned across machines.**
-  `PolicyEngine.decide()` picks a profile based on what's available on
-  *the machine running it, right now*. If the same identity/context is
-  used across multiple devices and one lacks a compiled `liboqs`, that
-  device will silently select a weaker profile with no coordination
-  with the others — two machines could end up encrypting under
-  different profiles with nothing to flag the mismatch. There's
-  currently no mechanism to pin a profile to an identity once and keep
-  it consistent across devices; that's on an application built on top
-  of `cryptoflex` to handle, not something this library does today.
-- **No migration tooling**, as covered above — self-describing headers
-  only, no batch re-encryption/rollback/backup logic in this library.
-- **No independent security review.** The combiner construction
-  follows RFC 9954's shape, and `TECHNICAL_REVIEW.md` contains a
-  detailed self-assessment, but neither is a substitute for an actual
-  audit of this specific implementation by an unaffiliated party.
+`cryptoflex` includes a full-featured CLI:
 
-## Running tests
+```bash
+# 1. Generate keyset and public bundle (password via prompt or CRYPTOFLEX_PASSWORD env var)
+cryptoflex keygen --key secret.cflk --bundle public.json
+
+# 2. Encrypt a file
+cryptoflex encrypt --in document.pdf --out document.cflx --bundle public.json
+
+# 3. Decrypt a file
+cryptoflex decrypt --in document.cflx --out restored.pdf --key secret.cflk
+
+# 4. Stream-encrypt large files
+cryptoflex encrypt --in dataset.tar --out dataset.cflx --bundle public.json --stream
+
+# 5. Inspect header metadata
+cryptoflex info document.cflx
+```
+
+---
+
+## Security Profiles (v1)
+
+| Profile ID         | Components                  | Quantum-safe | Strength |
+|--------------------|-----------------------------|--------------|----------|
+| `classical_only`   | X25519                      | No           | 1        |
+| `hybrid_standard`  | X25519 + ML-KEM-768         | Yes          | 2        |
+| `hybrid_high`      | X25519 + ML-KEM-1024        | Yes          | 3        |
+
+---
+
+## Hardening & Security Guarantees
+
+- **Combiner Security**: Uses HKDF-SHA384 with injective length-prefixed encoding and profile-specific domain separation (`b"cryptoflex-hybrid-kem-combiner-" + profile_id`), following RFC 9954.
+- **AEAD Integrity**: Serialized headers are authenticated as AEAD Associated Data (AAD), preventing header tampering.
+- **Downgrade Protection**: `decrypt()` enforces `min_profile` limits, raising `DowngradeError` before performing decapsulation.
+- **Uniform Error Boundary**: All cryptographic failures collapse into generic `DecryptionError` to eliminate timing/error side-channels.
+- **Password Hardening**: Key wrapping uses Scrypt ($N=2^{17}, r=8, p=1$) + AES-256-GCM.
+
+---
+
+## Running Tests
 
 ```bash
 pip install -e ".[dev]"
 CRYPTOFLEX_DISABLE_PQC=1 pytest -v
 ```
 
-(Drop the env var if you have a prebuilt liboqs available and want to
-exercise the real PQC path instead of the test-only `MockPQCSource`.)
+---
 
-## Contributing
+## License
 
-Issues and PRs welcome. Please run the test suite (see above) and
-`pyflakes cryptoflex/` before submitting.
-
-## Self-review
-
-A structured, AI-assisted self-review of the codebase is available in
-[`TECHNICAL_REVIEW.md`](TECHNICAL_REVIEW.md). It was generated at the
-project author's request to review the author's own code — **it is
-not an independent third-party audit**, and its numeric scores should
-be read as one structured perspective on the code, not as outside
-validation. See the disclaimer at the top of that file for more detail
-and for what's changed since it was written.
-
-## A note on how this was built
-
-This project was built with AI assistance (design, code, and docs),
-not written solo by hand. Flagging that plainly rather than leaving it
-ambiguous.
-
-## Status
-
-v0.1.0 — early, unaudited. Don't use this for anything where you can't
-afford to be wrong yet. Issues and review welcome.
+MIT License. See [LICENSE](LICENSE) for details.

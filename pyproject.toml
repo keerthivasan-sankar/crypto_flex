@@ -4,19 +4,30 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cryptoflex"
-version = "0.1.0"
+version = "0.3.0"
 description = "A local-first crypto-agility policy engine: orchestrates classical + post-quantum primitives behind a decision layer, with zero network dependency."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "Keerthivasan Sankar (Rambo)" }]
 dependencies = [
-    "cryptography>=42.0.0",
+    "cryptography>=42.0.0,<45.0.0",
 ]
 
 [project.optional-dependencies]
-pqc = ["liboqs-python>=0.10.0"]
-dev = ["pytest>=8.0.0"]
+pqc = ["liboqs-python>=0.10.0,<1.0.0"]
+dev = [
+    "pytest>=8.0.0",
+    "hypothesis>=6.0.0",
+]
+
+[project.scripts]
+cryptoflex = "cryptoflex.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/keerthivasan-sankar/testing-"
+Repository = "https://github.com/keerthivasan-sankar/testing-"
+Issues = "https://github.com/keerthivasan-sankar/testing-/issues"
 
 [tool.setuptools.packages.find]
 include = ["cryptoflex*"]

@@ -2,9 +2,9 @@
 cryptoflex.policy
 ====================
 
-The PolicyEngine is the actual novel piece of this project. Everything
+The PolicyEngine is the actual novel piece of this project.  Everything
 else (sources, combiner, profiles) is orchestration around existing,
-trusted cryptography. This module is the "brain" that decides WHICH
+trusted cryptography.  This module is the "brain" that decides WHICH
 profile an application should use, based entirely on LOCAL signals:
 
   - What's actually available on this machine (is liboqs built?)
@@ -47,6 +47,15 @@ class PolicyDecision:
     #: we fell back to something weaker - callers should surface this,
     #: e.g. log it or warn the user, rather than silently downgrading
     degraded: bool
+    #: Recommended minimum profile ID that the decryptor should enforce.
+    #: Defaults to the selected profile's ID.  Applications can persist
+    #: this alongside ciphertext so the decryptor refuses downgrades.
+    min_accepted_profile: str = ""
+
+    def __post_init__(self):
+        if not self.min_accepted_profile:
+            # frozen=True requires __setattr__ bypass
+            object.__setattr__(self, "min_accepted_profile", self.profile.profile_id)
 
 
 def _load_risk_table() -> dict:
@@ -62,7 +71,7 @@ class PolicyEngine:
 
     def _profile_deprecated(self, profile: SecurityProfile) -> bool:
         """A profile is only fully deprecated if EVERY source in it is
-        deprecated - not if just one is. This matches the actual security
+        deprecated - not if just one is.  This matches the actual security
         property of a hybrid combiner: the combined key is safe as long
         as at least one component remains sound, so a hybrid profile
         with one deprecated component and one healthy component is still
@@ -76,7 +85,7 @@ class PolicyEngine:
 
     def _candidate_order(self, constraint: Constraint) -> list[str]:
         """Ordered list of profile_ids to try, best-first, for a given
-        constraint. This ordering is the actual "policy" - it's the part
+        constraint.  This ordering is the actual "policy" - it's the part
         a maintainer or downstream app can override/extend."""
         if constraint == Constraint.FAST:
             return ["classical_only", "hybrid_standard", "hybrid_high"]
@@ -128,7 +137,12 @@ class PolicyEngine:
                     else ""
                 )
             )
-            return PolicyDecision(profile=profile, reason=reason, degraded=degraded)
+            return PolicyDecision(
+                profile=profile,
+                reason=reason,
+                degraded=degraded,
+                min_accepted_profile=profile_id,
+            )
 
         raise RuntimeError(
             "No acceptable security profile available: all candidates were "

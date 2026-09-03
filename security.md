@@ -10,8 +10,7 @@ Instead, use one of these private channels:
    [Security tab](https://github.com/keerthivasan-sankar/crypto_flex/security)
    of this repo → **Report a vulnerability**. This opens a private
    discussion visible only to the maintainer until a fix is ready.
-2. **Email:** [kkeerthivasan811@gmail.com] — replace with a real contact
-   address before relying on this file.
+2. **Email:** `kkeerthivasan811@gmail.com`
 
 Please include:
 - A description of the vulnerability and its potential impact
@@ -41,30 +40,29 @@ for anything more urgent.
 
 ## Supported versions
 
-| Version | Supported |
-|---------|-----------|
-| 0.1.x   | ✅        |
-
-This project is pre-1.0 and under active development. Once a stable
-1.0 is released, this table will be updated with a real support
-window.
+| Version | Supported | Notes |
+|---------|-----------|-------|
+| 0.4.x   | ✅        | Latest release with AEAD, ephemeral messaging, streaming, and CLI |
+| 0.3.x   | ⚠️        | Hardened v2 header format & combiner |
+| 0.2.x   | ⚠️        | Security fixes |
+| 0.1.x   | ❌        | Obsolete initial prototype |
 
 ## Scope
 
 This policy covers the `cryptoflex` library itself
 (`github.com/keerthivasan-sankar/crypto_flex`) — the policy engine,
-combiner, header format, and source wrappers. It does not cover
+combiner, header format, AEAD layer, streaming engine, keystore, CLI, and source wrappers. It does not cover
 `liboqs` or `liboqs-python` (report issues in those upstream) or
 `cryptography` (also upstream). If you're unsure whether something is
 a `cryptoflex` bug or an upstream one, report it here anyway and I'll
 help route it correctly.
 
-## A note on current status
+## Current Audit Status
 
 `cryptoflex` has not yet undergone an independent third-party security
-audit — see [`TECHNICAL_REVIEW.md`](TECHNICAL_REVIEW.md) for a fuller
-picture of what's been verified so far (test coverage, CI, two
+audit — see [`TECHNICAL_REVIEW_1.md`](TECHNICAL_REVIEW_1.md) for a fuller
+picture of what's been verified so far (Hypothesis fuzzing, 74 automated tests, CI, two
 previously-found-and-fixed validation bugs) versus what hasn't
-(formal audit, extensive fuzzing). Please keep that context in mind
+(formal audit, constant-time Python boundary). Please keep that context in mind
 both when deciding whether to rely on this library for anything
 sensitive, and when assessing the severity of anything you find.

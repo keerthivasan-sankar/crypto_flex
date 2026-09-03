@@ -5,34 +5,44 @@ cryptoflex.api
 High-level entry points most callers should use instead of touching
 sources/combiner/policy/header directly.
 
-Typical flow for the party generating a keypair (e.g. "recipient" or
-"vault owner"):
+Recommended API (Discussion #2534 hardening)
+----------------------------------------------
+    encrypt(bundle, plaintext) -> bytes
+    decrypt(private_handles, blob, *, min_profile=None) -> bytes
 
-    engine = PolicyEngine()
-    keyset = establish_keys(engine, constraint=Constraint.BALANCED)
-    # keyset.public_bundle: send/store this (public keys per source)
-    # keyset.private_handles: keep secret, needed to decapsulate later
+These perform AES-256-GCM with the full serialized header as AEAD
+associated data, so any modification to the version, profile, algorithm
+identifiers, ciphertexts, or nonce is detected by the AEAD tag check.
 
-Typical flow for the party deriving the root key (e.g. "sender" or
-"encrypt this file right now"):
+The older derive_root_key() / recover_root_key() remain available for
+advanced callers who manage their own symmetric encryption, but the new
+encrypt/decrypt functions are the recommended boundary.
 
-    result = derive_root_key(keyset.public_bundle)
-    # result.root_key: use as your AES-256-GCM key etc.
-    # result.header: prepend this to your ciphertext for later decryption
+Error model (Discussion #2534 feedback)
+-----------------------------------------
+    "Do not expose distinguishable errors or timing for 'classical
+    failed', 'ML-KEM failed', and 'payload authentication failed'.
+    Return one generic failure at the API boundary."
 
-And to reverse it after loading a stored header:
-
-    root_key = recover_root_key(keyset.private_handles, header)
+Both decrypt() and recover_root_key() catch ALL internal exceptions and
+re-raise a single DecryptionError("decryption failed").  Callers never
+learn which source or step failed.  DowngradeError (a DecryptionError
+subclass) is the one exception: it fires BEFORE any crypto operation
+when the header's profile is weaker than the caller's min_profile.
 """
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
 from .combiner import CombinedKeyMaterial, combine, combine_from_secrets
-from .header import CryptoflexHeader
+from .errors import DecryptionError, DowngradeError
+from .header import NONCE_LEN, CryptoflexHeader, HeaderParseError
 from .policy import Constraint, PolicyDecision, PolicyEngine
-from .profiles import SecurityProfile
+from .profiles import SecurityProfile, get_profile
 
 
 @dataclass
@@ -57,6 +67,10 @@ class DerivedRoot:
     header: CryptoflexHeader
 
 
+# ---------------------------------------------------------------------------
+# Key establishment (unchanged from v0.1)
+# ---------------------------------------------------------------------------
+
 def establish_keys(
     engine: PolicyEngine | None = None,
     constraint: Constraint = Constraint.BALANCED,
@@ -64,7 +78,7 @@ def establish_keys(
     require_quantum_safe: bool = False,
 ) -> KeySet:
     """Generate a fresh keypair for every source in the policy-selected
-    profile. Call this once per identity/session; keep private_handles
+    profile.  Call this once per identity/session; keep private_handles
     secret."""
     engine = engine or PolicyEngine()
     decision = engine.decide(constraint, require_quantum_safe=require_quantum_safe)
@@ -86,11 +100,17 @@ def establish_keys(
     )
 
 
+# ---------------------------------------------------------------------------
+# Low-level key derivation (preserved for advanced callers)
+# ---------------------------------------------------------------------------
+
 def derive_root_key(bundle: PublicBundle) -> DerivedRoot:
     """Given someone else's PublicBundle, derive a fresh root key and
-    produce the header to send/store alongside your ciphertext."""
-    from .profiles import get_profile
+    produce the header to send/store alongside your ciphertext.
 
+    NOTE: This is the low-level API.  Prefer encrypt() which handles
+    AEAD and header authentication automatically.
+    """
     profile = get_profile(bundle.profile_id)
     if len(profile.sources) != len(bundle.public_keys):
         raise ValueError(
@@ -109,18 +129,69 @@ def derive_root_key(bundle: PublicBundle) -> DerivedRoot:
         encapsulations.append((alg_id, enc))
 
     combined: CombinedKeyMaterial = combine(encapsulations)
+
+    # Generate nonce for v2 header
+    nonce = os.urandom(NONCE_LEN)
+
     header = CryptoflexHeader(
-        profile_id=bundle.profile_id, components=combined.components
+        profile_id=bundle.profile_id,
+        components=combined.components,
+        nonce=nonce,
     )
     return DerivedRoot(root_key=combined.root_key, header=header)
 
 
-def recover_root_key(private_handles: list[object], header: CryptoflexHeader) -> bytes:
+def recover_root_key(
+    private_handles: list[object],
+    header: CryptoflexHeader,
+    *,
+    min_profile: str | None = None,
+) -> bytes:
     """Given the private handles from establish_keys() and a received
-    header, recover the same root key derive_root_key() produced."""
-    from .profiles import get_profile
+    header, recover the same root key derive_root_key() produced.
 
-    profile = get_profile(header.profile_id)
+    If ``min_profile`` is specified, the header's profile must have a
+    strength_level >= the min_profile's strength_level, or DowngradeError
+    is raised BEFORE any cryptographic operation.
+
+    All cryptographic failures are collapsed into DecryptionError.
+    """
+    # --- downgrade check (before any crypto) ---
+    try:
+        header_profile = get_profile(header.profile_id)
+    except ValueError:
+        raise DecryptionError("decryption failed")
+
+    if min_profile is not None:
+        try:
+            min_prof = get_profile(min_profile)
+        except ValueError:
+            raise DecryptionError("decryption failed")
+        if header_profile.strength_level < min_prof.strength_level:
+            raise DowngradeError(
+                f"header profile '{header.profile_id}' "
+                f"(strength={header_profile.strength_level}) is weaker than "
+                f"minimum accepted profile '{min_profile}' "
+                f"(strength={min_prof.strength_level})"
+            )
+
+    # --- uniform error boundary: all crypto failures → DecryptionError ---
+    try:
+        return _recover_root_key_internal(private_handles, header, header_profile)
+    except DecryptionError:
+        raise
+    except Exception:
+        raise DecryptionError("decryption failed")
+
+
+def _recover_root_key_internal(
+    private_handles: list[object],
+    header: CryptoflexHeader,
+    profile: SecurityProfile,
+) -> bytes:
+    """Internal implementation of key recovery.  NOT exposed to callers -
+    exceptions from here are caught and converted to DecryptionError by
+    recover_root_key()."""
     if not (len(profile.sources) == len(private_handles) == len(header.components)):
         raise ValueError(
             "mismatched component counts between profile/handles/header "
@@ -144,3 +215,90 @@ def recover_root_key(private_handles: list[object], header: CryptoflexHeader) ->
 
     combined = combine_from_secrets(shared_secrets, header.components)
     return combined.root_key
+
+
+# ---------------------------------------------------------------------------
+# High-level AEAD encrypt / decrypt (recommended API)
+# ---------------------------------------------------------------------------
+
+def encrypt(bundle: PublicBundle, plaintext: bytes) -> bytes:
+    """Derive a root key from the recipient's PublicBundle and encrypt
+    ``plaintext`` under AES-256-GCM with the full serialized header as
+    AEAD associated data.
+
+    Returns a self-contained blob:
+        header_bytes || AES-GCM(ciphertext || 16-byte tag)
+
+    The header contains: magic, version, profile ID, all KEM ciphertexts,
+    and the AES-GCM nonce.  All of these fields are authenticated by the
+    AEAD tag, so any modification to them causes decryption to fail.
+    """
+    derived = derive_root_key(bundle)
+
+    header_bytes = derived.header.to_bytes()
+    nonce = derived.header.nonce
+    assert nonce is not None  # v2 headers always have a nonce
+
+    aesgcm = AESGCM(derived.root_key)
+    ct_with_tag = aesgcm.encrypt(nonce, plaintext, header_bytes)
+
+    return header_bytes + ct_with_tag
+
+
+def decrypt(
+    private_handles: list[object],
+    blob: bytes,
+    *,
+    min_profile: str | None = None,
+) -> bytes:
+    """Parse the header from ``blob``, recover the root key, and decrypt
+    the AEAD payload.
+
+    If ``min_profile`` is specified, the header's profile must have a
+    strength_level >= the min_profile's strength_level, or DowngradeError
+    is raised BEFORE any cryptographic operation.
+
+    All other failures (wrong keys, tampered header, tampered ciphertext,
+    truncated data, etc.) are collapsed into a single DecryptionError
+    with no indication of which step failed.
+    """
+    # --- parse header ---
+    try:
+        header, consumed = CryptoflexHeader.from_bytes(blob)
+    except HeaderParseError:
+        raise DecryptionError("decryption failed")
+
+    # --- downgrade check (before any crypto) ---
+    if min_profile is not None:
+        try:
+            header_profile = get_profile(header.profile_id)
+            min_prof = get_profile(min_profile)
+        except ValueError:
+            raise DecryptionError("decryption failed")
+        if header_profile.strength_level < min_prof.strength_level:
+            raise DowngradeError(
+                f"header profile '{header.profile_id}' "
+                f"(strength={header_profile.strength_level}) is weaker than "
+                f"minimum accepted profile '{min_profile}' "
+                f"(strength={min_prof.strength_level})"
+            )
+
+    # --- require v2 header for AEAD ---
+    if header.nonce is None:
+        raise DecryptionError("decryption failed")
+
+    # --- uniform error boundary ---
+    try:
+        profile = get_profile(header.profile_id)
+        root_key = _recover_root_key_internal(private_handles, header, profile)
+
+        header_bytes = blob[:consumed]
+        aead_payload = blob[consumed:]
+
+        aesgcm = AESGCM(root_key)
+        plaintext = aesgcm.decrypt(header.nonce, aead_payload, header_bytes)
+        return plaintext
+    except (DowngradeError, DecryptionError):
+        raise
+    except Exception:
+        raise DecryptionError("decryption failed")
