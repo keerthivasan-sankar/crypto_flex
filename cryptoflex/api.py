@@ -214,7 +214,12 @@ def _recover_root_key_internal(
         shared_secrets.append((alg_id, secret))
 
     combined = combine_from_secrets(shared_secrets, header.components)
-    return combined.root_key
+    root_key = combined.root_key
+
+    # Eagerly drop intermediate secret references.
+    del combined, shared_secrets
+
+    return root_key
 
 
 # ---------------------------------------------------------------------------
@@ -237,10 +242,14 @@ def encrypt(bundle: PublicBundle, plaintext: bytes) -> bytes:
 
     header_bytes = derived.header.to_bytes()
     nonce = derived.header.nonce
-    assert nonce is not None  # v2 headers always have a nonce
+    if nonce is None:  # v2 headers always have a nonce
+        raise ValueError("derive_root_key() produced a v1 header with no nonce — cannot encrypt")
 
     aesgcm = AESGCM(derived.root_key)
     ct_with_tag = aesgcm.encrypt(nonce, plaintext, header_bytes)
+
+    # Eagerly drop root key reference to reduce its heap lifetime.
+    del aesgcm, derived
 
     return header_bytes + ct_with_tag
 
@@ -297,6 +306,10 @@ def decrypt(
 
         aesgcm = AESGCM(root_key)
         plaintext = aesgcm.decrypt(header.nonce, aead_payload, header_bytes)
+
+        # Eagerly drop root key reference to reduce its heap lifetime.
+        del aesgcm, root_key
+
         return plaintext
     except (DowngradeError, DecryptionError):
         raise

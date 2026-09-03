@@ -15,7 +15,7 @@ plaintext on disk.  This module provides:
 File Formats:
   1. `.bundle.json`: PublicBundle (unencrypted public keys + profile_id)
   2. `.keyset.cflk`: Password-encrypted KeySet payload
-     - `CFLA`: Magic for Argon2id KDF (memory_cost=64MB, time_cost=3, parallelism=4)
+     - `CFLA`: Magic for Argon2id KDF (memory_cost=32MB, time_cost=3, parallelism=1)
      - `CFLK`: Magic for Scrypt KDF (N=2^17, r=8, p=1)
 """
 
@@ -50,8 +50,8 @@ def _derive_wrapping_key(password: str | bytes, salt: bytes, kdf_type: str = "ar
             salt=salt,
             length=KEY_LEN,
             iterations=3,
-            memory_cost=65536,  # 64 MB
-            lanes=4,
+            memory_cost=32768,  # 32 MB — balanced for multi-tenancy
+            lanes=1,           # single lane to limit per-call RAM ceiling
         )
         return kdf.derive(password)
     elif kdf_type == "scrypt":

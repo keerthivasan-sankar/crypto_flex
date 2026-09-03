@@ -40,6 +40,8 @@ from .header import CryptoflexHeader, HeaderParseError
 from .profiles import get_profile
 
 DEFAULT_CHUNK_SIZE = 64 * 1024  # 64 KB per chunk
+MAX_CHUNK_SIZE = 9 * 1024 * 1024  # 9 MB — must match decrypt_stream sanity limit
+MAX_HEADER_SIZE = 64 * 1024  # 64 KB — enough for any realistic future profile
 
 
 def _derive_chunk_nonce(base_nonce: bytes, sequence_number: int) -> bytes:
@@ -71,10 +73,16 @@ def encrypt_stream(
     derived = derive_root_key(bundle)
     header_bytes = derived.header.to_bytes()
     base_nonce = derived.header.nonce
-    assert base_nonce is not None
+    if base_nonce is None:  # v2 headers always have a nonce
+        raise ValueError("derive_root_key() produced a v1 header with no nonce — cannot stream-encrypt")
+    if chunk_size > MAX_CHUNK_SIZE:
+        raise ValueError(f"chunk_size {chunk_size} exceeds MAX_CHUNK_SIZE {MAX_CHUNK_SIZE}; reduce to ensure decryptability")
 
     output_stream.write(header_bytes)
     aesgcm = AESGCM(derived.root_key)
+
+    # Eagerly drop the derived root key object; aesgcm holds the key internally.
+    del derived
 
     sequence_number = 0
     while True:
@@ -93,6 +101,8 @@ def encrypt_stream(
     # Write terminal marker (0-length chunk)
     output_stream.write(struct.pack(">I", 0))
 
+    del aesgcm  # drop AEAD key reference after stream is fully written
+
 
 def decrypt_stream(
     private_handles: list[object],
@@ -107,7 +117,7 @@ def decrypt_stream(
     Raises DecryptionError or DowngradeError on failure.
     """
     # Read initial bytes to parse header
-    initial_bytes = input_stream.read(4096)
+    initial_bytes = input_stream.read(MAX_HEADER_SIZE)
     if not initial_bytes:
         raise DecryptionError("decryption failed: empty stream")
 
@@ -143,6 +153,9 @@ def decrypt_stream(
 
         root_key = _recover_root_key_internal(private_handles, header, profile)
         aesgcm = AESGCM(root_key)
+
+        # Eagerly drop root key reference; aesgcm holds the key internally.
+        del root_key
     except (DowngradeError, DecryptionError):
         raise
     except Exception:
@@ -183,7 +196,7 @@ def decrypt_stream(
                 # Terminal marker reached
                 break
 
-            if ct_len > 10 * 1024 * 1024:  # 10 MB sanity limit per chunk
+            if ct_len > MAX_CHUNK_SIZE:  # matches encrypt_stream's cap
                 raise DecryptionError("decryption failed: chunk size exceeds limit")
 
             ct_with_tag = reader.read_exact(ct_len)

@@ -157,6 +157,9 @@ class ClassicalSource(SecuritySource):
         eph_pub = eph_priv.public_key().public_bytes_raw()
         peer_pub = X25519PublicKey.from_public_bytes(peer_public_key)
         shared_secret = eph_priv.exchange(peer_pub)
+        # Drop the ephemeral private key reference as early as possible
+        # to minimise its lifetime in the Python heap.
+        del eph_priv
         return Encapsulation(ciphertext=eph_pub, shared_secret=shared_secret)
 
     def decapsulate(self, private_key_handle: object, ciphertext: bytes) -> bytes:
@@ -212,14 +215,33 @@ class PQCSource(SecuritySource):
 
     def encapsulate(self, peer_public_key: bytes) -> Encapsulation:
         self._require_available()
-        with oqs.KeyEncapsulation(self.kem_name) as kem:
+        kem = oqs.KeyEncapsulation(self.kem_name)
+        try:
             ciphertext, shared_secret = kem.encap_secret(peer_public_key)
             return Encapsulation(ciphertext=ciphertext, shared_secret=shared_secret)
+        finally:
+            kem.free()
 
     def decapsulate(self, private_key_handle: object, ciphertext: bytes) -> bytes:
+        """Recover the shared secret from a KEM ciphertext.
+
+        Implicit rejection: if liboqs raises ANY exception (e.g. a fast
+        length-check failure in the C binding), we return random bytes of
+        the correct shared-secret length instead of propagating the error
+        immediately. This forces the caller's AEAD tag check (which runs
+        in constant time) to fail later, closing the timing oracle that
+        would otherwise let an attacker distinguish "rejected because of
+        length" (~2 µs) from "rejected by real decapsulation" (~300 µs).
+        """
         self._require_available()
         kem: Any = private_key_handle  # the live oqs.KeyEncapsulation from generate_keypair
-        return kem.decap_secret(ciphertext)
+        try:
+            return kem.decap_secret(ciphertext)
+        except Exception:
+            # Return random garbage of the expected shared-secret length.
+            # The AEAD tag check downstream will reject the derived key.
+            ss_len = kem.details.get("length_shared_secret", 32)
+            return os.urandom(ss_len)
 
     def serialize_private(self, private_key_handle: object) -> bytes:
         self._require_available()
