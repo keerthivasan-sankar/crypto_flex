@@ -12,6 +12,13 @@ numbers** that don't necessarily move together:
   change for anyone with existing encrypted files and will always be
   called out explicitly here.
 
+## [0.4.1] - 2026-09-03
+
+### Added
+- **Argon2id Keystore Protection**: Upgraded `cryptoflex.keystore` to support Argon2id password key derivation (`CFLA` header magic; $m=64\text{MB}, t=3, p=4$) as the new default for `export_keyset_bytes()`, while maintaining full backward compatibility with Scrypt (`CFLK` magic header).
+- **In-Place Memory Zeroization**: Added `cryptoflex.utils.zeroize(buffer)` helper to securely wipe sensitive bytearrays and memoryviews in-place (`0x00`) to mitigate RAM retention risk.
+- **CLI Migration Command**: Added `cryptoflex migrate` CLI subcommand allowing users to re-encrypt existing `.cflx` files under a new recipient `PublicBundle` to upgrade security profiles completely offline.
+
 ## [0.4.0] - 2026-09-03
 
 ### Security Hardening

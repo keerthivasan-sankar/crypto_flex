@@ -1,10 +1,10 @@
-# Software Bill of Materials (SBOM) — cryptoflex v0.4.0
+# Software Bill of Materials (SBOM) — cryptoflex v0.4.1
 
 ## Direct Dependencies
 
 | Package | Version Constraint | Role | Security Relevance |
 |---------|-------------------|------|-------------------|
-| `cryptography` | `>=42.0.0,<45.0.0` | Provides X25519 ECDH, HKDF-SHA384, Scrypt KDF, AES-256-GCM | **Critical** — all classical crypto and AEAD operations |
+| `cryptography` | `>=42.0.0,<45.0.0` | Provides X25519 ECDH, HKDF-SHA384, Argon2id KDF, Scrypt KDF, AES-256-GCM | **Critical** — all classical crypto, KDF, and AEAD operations |
 | `liboqs-python` | `>=0.10.0,<1.0.0` (optional) | Python wrapper for liboqs C library | **Critical** — provides ML-KEM-768/1024 post-quantum KEM |
 | `hypothesis` | `>=6.0.0` (dev only) | Property-based fuzz testing framework | Not shipped in release wheel |
 | `pytest` | `>=8.0.0` (dev only) | Test framework | Not shipped in release wheel |
@@ -47,4 +47,5 @@ Recommended CI pipeline:
 | ML-KEM-1024 | NIST FIPS 203 | Post-quantum key encapsulation (high assurance) |
 | HKDF-SHA384 | RFC 5869 | Hybrid KEM combiner key derivation |
 | AES-256-GCM | NIST SP 800-38D | Authenticated encryption with associated data |
-| Scrypt | RFC 7914 | Password-based key derivation ($N=2^{17}, r=8, p=1$) for keystore |
+| Argon2id | RFC 9106 | Keystore password key derivation ($m=64\text{MB}, t=3, p=4$) |
+| Scrypt | RFC 7914 | Keystore password key derivation ($N=2^{17}, r=8, p=1$) |

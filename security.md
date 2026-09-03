@@ -42,16 +42,16 @@ for anything more urgent.
 
 | Version | Supported | Notes |
 |---------|-----------|-------|
-| 0.4.x   | ✅        | Latest release with AEAD, ephemeral messaging, streaming, and CLI |
-| 0.3.x   | ⚠️        | Hardened v2 header format & combiner |
-| 0.2.x   | ⚠️        | Security fixes |
-| 0.1.x   | ❌        | Obsolete initial prototype |
+| 0.4.x   | ✅        | Latest release (v0.4.1 with Argon2id, zeroize RAM protection, CLI migrate) |
+| 0.3.x   | ⚠️        | Legacy v2 header format |
+| 0.2.x   | ⚠️        | Initial security fixes |
+| 0.1.x   | ❌        | Obsolete prototype |
 
 ## Scope
 
 This policy covers the `cryptoflex` library itself
 (`github.com/keerthivasan-sankar/crypto_flex`) — the policy engine,
-combiner, header format, AEAD layer, streaming engine, keystore, CLI, and source wrappers. It does not cover
+combiner, header format, AEAD layer, streaming engine, Argon2id/Scrypt keystore, memory security, CLI, and source wrappers. It does not cover
 `liboqs` or `liboqs-python` (report issues in those upstream) or
 `cryptography` (also upstream). If you're unsure whether something is
 a `cryptoflex` bug or an upstream one, report it here anyway and I'll
@@ -61,7 +61,7 @@ help route it correctly.
 
 `cryptoflex` has not yet undergone an independent third-party security
 audit — see [`TECHNICAL_REVIEW_1.md`](TECHNICAL_REVIEW_1.md) for a fuller
-picture of what's been verified so far (Hypothesis fuzzing, 74 automated tests, CI, two
+picture of what's been verified so far (Hypothesis fuzzing, 78 automated tests, CI, two
 previously-found-and-fixed validation bugs) versus what hasn't
 (formal audit, constant-time Python boundary). Please keep that context in mind
 both when deciding whether to rely on this library for anything

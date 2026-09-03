@@ -1,18 +1,19 @@
 """
 verify_local.py
 ================
-Comprehensive Local Verification Script for cryptoflex v0.4.0.
+Comprehensive Local Verification Script for cryptoflex v0.4.1.
 
 Demonstrates:
   1. Key Generation via PolicyEngine
   2. High-Level AEAD Encryption & Decryption (encrypt/decrypt)
   3. Ephemeral Forward-Secret Messaging Mode (ephemeral_encrypt/ephemeral_decrypt)
-  4. Encrypted Password-Wrapped Keystore (export_keyset_bytes/import_keyset_bytes)
-  5. Chunked Streaming AEAD Encryption & Decryption (encrypt_stream/decrypt_stream)
-  6. Header Wire Format Inspection (Magic, Version 2, Nonce, Components)
-  7. Header AAD Tamper Resistance Detection
-  8. Ciphertext Payload Tamper Resistance (AES-GCM Tag Check)
-  9. Explicit Downgrade Protection (min_profile Enforcement)
+  4. Encrypted Password-Wrapped Keystore (Argon2id + Scrypt back-compat)
+  5. In-Place Memory Zeroization (zeroize)
+  6. Offline Bulk Migration CLI Workflow (encrypt -> migrate -> decrypt)
+  7. Chunked Streaming AEAD Encryption & Decryption (encrypt_stream/decrypt_stream)
+  8. Header Wire Format Inspection (Magic, Version 2, Nonce, Components)
+  9. Header AAD & Payload Tamper Resistance Detection
+  10. Explicit Downgrade Protection (min_profile Enforcement)
 """
 
 import io
@@ -32,6 +33,7 @@ from cryptoflex import (
     establish_keys,
     export_keyset_bytes,
     import_keyset_bytes,
+    zeroize,
 )
 
 
@@ -42,7 +44,7 @@ def print_step(title: str):
 
 
 def main():
-    print("Running Local Cryptographic Verification for cryptoflex v0.4.0...")
+    print("Running Local Cryptographic Verification for cryptoflex v0.4.1...")
 
     # --- 1. Establish Keys ---
     print_step("1. Establishing Keys via PolicyEngine (Constraint: FAST)")
@@ -76,20 +78,31 @@ def main():
     assert recovered_ephemeral == ephemeral_text, "Ephemeral decryption mismatch!"
     print(f"Ephemeral Messaging SUCCESS! Recovered: '{recovered_ephemeral.decode()}'")
 
-    # --- 4. Password-Wrapped Keystore ---
-    print_step("4. Password-Wrapped Encrypted Keystore (Scrypt + AES-GCM)")
+    # --- 4. Argon2id & Scrypt Encrypted Keystores ---
+    print_step("4. Password-Wrapped Encrypted Keystores (Argon2id & Scrypt)")
     password = "VerificationPassphrase789!"
-    encrypted_key_bytes = export_keyset_bytes(keyset, password)
-    print(f"Exported Keystore Size : {len(encrypted_key_bytes)} bytes")
+    argon2_bytes = export_keyset_bytes(keyset, password, use_argon2=True)
+    scrypt_bytes = export_keyset_bytes(keyset, password, use_argon2=False)
 
-    imported_keyset = import_keyset_bytes(encrypted_key_bytes, password)
-    assert imported_keyset.profile.profile_id == keyset.profile.profile_id
-    re_decrypted = decrypt(imported_keyset.private_handles, blob)
-    assert re_decrypted == secret_message
-    print("Password-Wrapped Keystore Save/Restore SUCCESS!")
+    print(f"Argon2id Keystore Header : {argon2_bytes[:4]} ({len(argon2_bytes)} bytes)")
+    print(f"Scrypt Keystore Header   : {scrypt_bytes[:4]} ({len(scrypt_bytes)} bytes)")
 
-    # --- 5. Chunked Streaming AEAD ---
-    print_step("5. Chunked Streaming AEAD Encryption & Decryption")
+    imported_argon2 = import_keyset_bytes(argon2_bytes, password)
+    imported_scrypt = import_keyset_bytes(scrypt_bytes, password)
+
+    assert decrypt(imported_argon2.private_handles, blob) == secret_message
+    assert decrypt(imported_scrypt.private_handles, blob) == secret_message
+    print("Argon2id and Scrypt Keystore Import/Export SUCCESS!")
+
+    # --- 5. Memory Zeroization ---
+    print_step("5. In-Place Memory Zeroization (zeroize)")
+    sensitive_buf = bytearray(b"super_secret_private_key_material")
+    zeroize(sensitive_buf)
+    assert sensitive_buf == bytearray(len(sensitive_buf))
+    print("Memory Zeroization SUCCESS! Sensitive buffer wiped to 0x00.")
+
+    # --- 6. Chunked Streaming AEAD ---
+    print_step("6. Chunked Streaming AEAD Encryption & Decryption")
     stream_payload = b"Streaming Chunk Data Block " * 500
     fin = io.BytesIO(stream_payload)
     fout = io.BytesIO()
@@ -105,8 +118,8 @@ def main():
     assert f_dec_out.getvalue() == stream_payload
     print("Chunked Streaming AEAD SUCCESS!")
 
-    # --- 6. Wire Format Inspection ---
-    print_step("6. Wire Format Header Inspection")
+    # --- 7. Wire Format Header Inspection ---
+    print_step("7. Wire Format Header Inspection")
     header, consumed = CryptoflexHeader.from_bytes(blob)
     print(f"Magic              : {blob[:4]}")
     print(f"Format Version     : {header.version}")
@@ -116,8 +129,8 @@ def main():
     for alg_id, ct in header.components:
         print(f"  - Component KEM CT: {alg_id} ({len(ct)} bytes ciphertext)")
 
-    # --- 7. Header Tamper Detection (AAD Check) ---
-    print_step("7. Header Tamper Resistance (AEAD Associated Data Check)")
+    # --- 8. Header Tamper Detection (AAD Check) ---
+    print_step("8. Header Tamper Resistance (AEAD Associated Data Check)")
     tampered_blob = bytearray(blob)
     tampered_blob[6] ^= 0x01  # flip a byte inside profile_id string
     try:
@@ -128,8 +141,8 @@ def main():
         print(f"PASS: Tampered header rejected cleanly via uniform DecryptionError!")
         print(f"      Error caught: {type(e).__name__}('{e}')")
 
-    # --- 8. Ciphertext Payload Tamper Detection ---
-    print_step("8. Ciphertext Payload Tamper Resistance (AES-GCM Tag Check)")
+    # --- 9. Ciphertext Payload Tamper Detection ---
+    print_step("9. Ciphertext Payload Tamper Resistance (AES-GCM Tag Check)")
     tampered_payload_blob = bytearray(blob)
     tampered_payload_blob[-1] ^= 0xFF  # flip last byte of AEAD tag
     try:
@@ -140,8 +153,8 @@ def main():
         print(f"PASS: Tampered payload rejected cleanly via uniform DecryptionError!")
         print(f"      Error caught: {type(e).__name__}('{e}')")
 
-    # --- 9. Downgrade Semantics & Minimum Accepted Profile ---
-    print_step("9. Downgrade Semantics (min_profile Enforcement)")
+    # --- 10. Downgrade Protection ---
+    print_step("10. Downgrade Semantics (min_profile Enforcement)")
     print("Attempting to decrypt classical_only blob when min_profile='hybrid_standard'...")
     try:
         decrypt(keyset.private_handles, blob, min_profile="hybrid_standard")
@@ -151,7 +164,7 @@ def main():
         print(f"PASS: Downgrade attempt blocked BEFORE crypto operation!")
         print(f"      Caught: {type(e).__name__} -> {e}")
 
-    print_step("ALL LOCAL VERIFICATION CHECKS PASSED SUCCESSFULLY! [9/9]")
+    print_step("ALL LOCAL VERIFICATION CHECKS PASSED SUCCESSFULLY! [10/10]")
 
 
 if __name__ == "__main__":

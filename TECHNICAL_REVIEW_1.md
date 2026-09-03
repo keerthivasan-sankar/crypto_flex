@@ -12,16 +12,17 @@
 > author's own account of their project's strengths and weaknesses:
 > a useful starting point, not a substitute for independent review.
 
-> **Note (updated for v0.4.0 — September 2026):** This review was written in
+> **Note (updated for v0.4.1 — September 2026):** This review was written in
 > August 2026 for v0.1.0. Almost all items flagged as missing have since been fully addressed:
 > - **CI/CD** (§3, §9.2): GitHub Actions runs the suite across Python 3.10-3.12, plus a native build job for real `liboqs`.
 > - **High-Level AEAD API** (§5.1, §9.6): Implemented `encrypt()` and `decrypt()` with AES-256-GCM and header AAD integrity authentication.
 > - **Forward Secrecy** (§2.1, §9.5): Implemented `ephemeral_encrypt()`, `ephemeral_decrypt()`, and `WireMessage` in `cryptoflex.ephemeral` for message-level forward secrecy.
 > - **Property-Based Fuzzing** (§6, §9.8): Implemented Hypothesis strategy fuzzing (`test_fuzz_header.py`) verifying 200+ byte mutations.
-> - **Password-Wrapped Keystore** (§4.2, §9.7): Implemented Scrypt ($N=2^{17}$) + AES-256-GCM encrypted private key storage in `cryptoflex.keystore`.
+> - **Password-Wrapped Keystore** (§4.2, §9.7): Implemented Argon2id ($m=64\text{MB}, t=3, p=4$) + AES-256-GCM encrypted private key storage in `cryptoflex.keystore` (with Scrypt backward compatibility).
+> - **RAM Security**: Implemented in-place memory zeroization (`zeroize`) in `cryptoflex.utils`.
 > - **Chunked Streaming AEAD**: Implemented `encrypt_stream()` and `decrypt_stream()` in `cryptoflex.streaming` for large file processing.
-> - **Command-Line Interface**: Implemented `cryptoflex CLI` (`cli.py`) for keygen, encrypt, decrypt, and header inspection.
-> - **Test Suite Expansion**: Grown from 16 tests to **74 tests** across 13 test files.
+> - **Command-Line Interface**: Implemented `cryptoflex CLI` (`cli.py`) for keygen, encrypt, decrypt, offline migration (`cryptoflex migrate`), and header inspection.
+> - **Test Suite Expansion**: Grown from 16 tests to **78 tests** across 14 test files.
 >
 > The remaining open recommendation is an independent third-party audit by a commercial firm ($15K-$50K+). This note is kept at the top rather than editing the review body, so the original v0.1.0 assessment stays intact as a point-in-time record.
 
