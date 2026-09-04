@@ -106,6 +106,27 @@ def encrypt_stream(
         zeroize(root_key_buf)
 
 
+class _StreamReader:
+    def __init__(self, initial: bytes, stream: BinaryIO):
+        self.buf = bytearray(initial)
+        self.stream = stream
+
+    def read_exact(self, n: int) -> bytes:
+        while len(self.buf) < n:
+            more = self.stream.read(n - len(self.buf) + 4096)
+            if not more:
+                break
+            self.buf.extend(more)
+
+        if len(self.buf) < n:
+            raise DecryptionError("decryption failed: truncated chunk")
+
+        res = bytes(self.buf[:n])
+        del self.buf[:n]
+        return res
+
+
+
 def decrypt_stream(
     private_handles: list[object],
     input_stream: BinaryIO,
@@ -164,31 +185,7 @@ def decrypt_stream(
 
     try:
         aesgcm = AESGCM(bytes(root_key_buf))
-
-        # Helper buffer for stream reading
-        class StreamReader:
-            def __init__(self, initial: bytes, stream: BinaryIO):
-                self.buf = bytearray(initial)
-                self.stream = stream
-
-            def read_exact(self, n: int) -> bytes:
-                while len(self.buf) < n:
-                    more = self.stream.read(n - len(self.buf) + 4096)
-                    if not more:
-                        break
-                    self.buf.extend(more)
-
-                if len(self.buf) < n:
-                    raise DecryptionError("decryption failed: truncated chunk")
-
-                res = bytes(self.buf[:n])
-                del self.buf[:n]
-                return res
-
-            def has_data(self) -> bool:
-                return len(self.buf) > 0
-
-        reader = StreamReader(unconsumed_initial, input_stream)
+        reader = _StreamReader(unconsumed_initial, input_stream)
         sequence_number = 0
 
         while True:
@@ -216,3 +213,124 @@ def decrypt_stream(
     finally:
         from .utils import zeroize
         zeroize(root_key_buf)
+
+
+def migrate_stream(
+    private_handles: list[object],
+    input_stream: BinaryIO,
+    output_stream: BinaryIO,
+    new_bundle: PublicBundle,
+    *,
+    min_profile: str | None = None,
+) -> None:
+    """Re-encrypt a chunked binary stream under a new PublicBundle (offline migration).
+
+    Performs chunk-by-chunk in-memory streaming re-encryption without using temporary files on disk.
+    Each chunk is decrypted, re-encrypted under the new key/header, and zeroized in RAM immediately.
+    """
+    initial_bytes = input_stream.read(MAX_HEADER_SIZE)
+    if not initial_bytes:
+        raise DecryptionError("decryption failed: empty stream")
+
+    try:
+        old_header, consumed = CryptoflexHeader.from_bytes(initial_bytes)
+    except HeaderParseError:
+        raise DecryptionError("decryption failed: invalid header")
+
+    old_header_bytes = initial_bytes[:consumed]
+    unconsumed_initial = initial_bytes[consumed:]
+
+    if min_profile is not None:
+        try:
+            header_profile = get_profile(old_header.profile_id)
+            min_prof = get_profile(min_profile)
+        except ValueError:
+            raise DecryptionError("decryption failed")
+        if header_profile.strength_level < min_prof.strength_level:
+            raise DowngradeError(
+                f"header profile '{old_header.profile_id}' "
+                f"(strength={header_profile.strength_level}) is weaker than "
+                f"minimum accepted profile '{min_profile}' "
+                f"(strength={min_prof.strength_level})"
+            )
+
+    if old_header.nonce is None:
+        raise DecryptionError("decryption failed: v1 header not supported in streaming mode")
+
+    try:
+        old_profile = get_profile(old_header.profile_id)
+        from .api import _recover_root_key_internal
+
+        raw_old_root_key = _recover_root_key_internal(private_handles, old_header, old_profile)
+    except (DowngradeError, DecryptionError):
+        raise
+    except Exception:
+        raise DecryptionError("decryption failed")
+
+    old_root_key_buf = bytearray(raw_old_root_key)
+    del raw_old_root_key
+
+    # Derive new root key & header for target recipient bundle
+    new_derived = derive_root_key(new_bundle)
+    new_header_bytes = new_derived.header.to_bytes()
+    new_base_nonce = new_derived.header.nonce
+    if new_base_nonce is None:
+        raise ValueError("derive_root_key() produced a v1 header with no nonce — cannot stream-migrate")
+
+    new_root_key_buf = bytearray(new_derived.root_key)
+    del new_derived
+
+    # Write new header to output stream
+    output_stream.write(new_header_bytes)
+
+    try:
+        old_aesgcm = AESGCM(bytes(old_root_key_buf))
+        new_aesgcm = AESGCM(bytes(new_root_key_buf))
+        reader = _StreamReader(unconsumed_initial, input_stream)
+        sequence_number = 0
+
+        while True:
+            length_bytes = reader.read_exact(4)
+            (ct_len,) = struct.unpack(">I", length_bytes)
+
+            if ct_len == 0:
+                break
+
+            if ct_len > MAX_CHUNK_SIZE:
+                raise DecryptionError("decryption failed: chunk size exceeds limit")
+
+            ct_with_tag = reader.read_exact(ct_len)
+            old_nonce = _derive_chunk_nonce(old_header.nonce, sequence_number)
+            old_aad = _derive_chunk_aad(old_header_bytes, sequence_number)
+
+            # 1. Decrypt chunk under old key
+            chunk_pt = old_aesgcm.decrypt(old_nonce, ct_with_tag, old_aad)
+            chunk_pt_buf = bytearray(chunk_pt)
+            del chunk_pt
+
+            try:
+                # 2. Encrypt chunk under new key
+                new_nonce = _derive_chunk_nonce(new_base_nonce, sequence_number)
+                new_aad = _derive_chunk_aad(new_header_bytes, sequence_number)
+                new_ct_with_tag = new_aesgcm.encrypt(new_nonce, bytes(chunk_pt_buf), new_aad)
+
+                output_stream.write(struct.pack(">I", len(new_ct_with_tag)))
+                output_stream.write(new_ct_with_tag)
+            finally:
+                from .utils import zeroize
+                zeroize(chunk_pt_buf)
+
+            sequence_number += 1
+
+        # Write terminal marker (0-length chunk)
+        output_stream.write(struct.pack(">I", 0))
+    except (DowngradeError, DecryptionError):
+        raise
+    except Exception:
+        raise DecryptionError("decryption failed")
+    finally:
+        from .utils import zeroize
+        zeroize(old_root_key_buf)
+        zeroize(new_root_key_buf)
+
+

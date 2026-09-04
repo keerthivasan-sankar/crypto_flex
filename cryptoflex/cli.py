@@ -24,7 +24,7 @@ import getpass
 import os
 import sys
 
-from .api import decrypt, encrypt, establish_keys
+from .api import decrypt, encrypt, establish_keys, migrate_file
 from .header import CryptoflexHeader
 from .keystore import (
     deserialize_public_bundle,
@@ -34,6 +34,8 @@ from .keystore import (
 )
 from .policy import Constraint
 from .streaming import decrypt_stream, encrypt_stream
+
+
 
 
 def _resolve_password(parsed_password: str | None, prompt: str) -> str:
@@ -99,6 +101,9 @@ def main(args: list[str] | None = None) -> int:
     p_mig.add_argument("--key", required=True, help="Current KeySet file path (.cflk)")
     p_mig.add_argument("--new-bundle", required=True, help="Target new PublicBundle JSON file path")
     p_mig.add_argument("--password", default=None, help="Passphrase for KeySet")
+    p_mig.add_argument("--min-profile", help="Minimum required profile ID for existing ciphertext")
+    p_mig.add_argument("--stream", action="store_true", help="Use chunked streaming mode for large files")
+
 
     # --- INFO ---
     p_info = subparsers.add_parser("info", help="Inspect metadata from a .cflx encrypted file header")
@@ -171,17 +176,18 @@ def main(args: list[str] | None = None) -> int:
             with open(parsed.new_bundle, "r", encoding="utf-8") as f:
                 new_bundle = deserialize_public_bundle(f.read())
 
-            with open(parsed.input_path, "rb") as fin:
-                blob = fin.read()
-
-            plaintext = decrypt(keyset.private_handles, blob)
-            migrated_blob = encrypt(new_bundle, plaintext)
-
-            with open(parsed.output_path, "wb") as fout:
-                fout.write(migrated_blob)
+            migrate_file(
+                keyset.private_handles,
+                parsed.input_path,
+                parsed.output_path,
+                new_bundle,
+                min_profile=parsed.min_profile,
+                stream=parsed.stream,
+            )
 
             print(f"Successfully migrated '{parsed.input_path}' to target bundle profile '{new_bundle.profile_id}' -> '{parsed.output_path}'")
             return 0
+
 
         elif parsed.command == "info":
             with open(parsed.file, "rb") as f:

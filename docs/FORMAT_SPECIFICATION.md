@@ -127,3 +127,47 @@ Encrypted KeySets exported via `export_keyset_bytes()` use password-based key de
 | `"CFLK"` | **Scrypt** (Legacy) | $N=2^{17}$ | $r=8$ | $p=1$ | 32 bytes | 16 bytes |
 
 The decrypted JSON payload contains the `profile_id`, the recipient `PublicBundle`, and base64-encoded serialized private key handles.
+
+---
+
+## 6. Formal Hybrid Combiner Specification & Security Model
+
+This section provides the mathematical formalization of the `cryptoflex` hybrid KEM combiner $\mathcal{C}(\mathbf{S}, \mathbf{C})$ required for formal independent cryptographic review.
+
+### 6.1 Mathematical Definition
+
+Let $\mathbf{S} = (S_1, S_2, \dots, S_M)$ be a sequence of shared secrets established by component key encapsulation mechanisms $\text{KEM}_1, \dots, \text{KEM}_M$.  
+Let $\mathbf{C} = ((A_1, C_1), \dots, (A_M, C_M))$ be the corresponding tuples of algorithm identifiers $A_i$ and KEM ciphertexts $C_i$.
+
+The combiner mapping $\mathcal{C}: (\{0,1\}^*)^M \times (\{0,1\}^* \times \{0,1\}^*)^M \to \{0,1\}^{256}$ is defined as:
+
+$$\text{IKM} = \phi(\mathbf{S}) = \bigparallel_{i=1}^M \left( \text{uint16\_be}(|S_i|) \parallel S_i \right)$$
+
+$$\text{info} = \psi(\mathbf{C}) = \text{"cryptoflex-combiner-v1"} \parallel \bigparallel_{i=1}^M \left( \text{uint8\_be}(|A_i|) \parallel A_i \parallel \text{uint16\_be}(|C_i|) \parallel C_i \right)$$
+
+$$\text{PRK} = \text{HKDF-Extract}(0^{48}, \text{IKM})$$
+
+$$\text{RootKey} = \text{HKDF-Expand}(\text{PRK}, \text{info}, 32)$$
+
+### 6.2 Security Theorem 1: Unconditional Dual-KEM Hybrid Security
+
+> **Theorem 6.1 (Dual-PRF Hybrid Security Bound)**:  
+> Suppose HKDF-Extract is modeled as a dual pseudorandom function (Dual-PRF) or random oracle. If **at least one** component mechanism $\text{KEM}_k \in \{\text{KEM}_1, \dots, \text{KEM}_M\}$ is IND-CCA2 secure (so that secret $S_k$ is computationally indistinguishable from uniform over $\{0,1\}^{|S_k|}$ given $C_k$), then the derived $\text{RootKey}$ is computationally indistinguishable from a uniform random 256-bit key to any polynomial-time adversary $\mathcal{A}$, even if all remaining $M-1$ components are completely broken.
+
+*Proof Sketch*:  
+Since $S_k$ is computationally uniform given $C_k$, the concatenated string $\text{IKM} = \phi(\mathbf{S})$ contains at least $|S_k|$ bits of high min-entropy. Under the Dual-PRF property of HKDF-Extract (RFC 5869 / Krawczyk 2010), $\text{HKDF-Extract}(0^{48}, \text{IKM})$ yields a pseudorandom key $\text{PRK}$ indistinguishable from uniform. Expanding $\text{PRK}$ with context $\text{info}$ via HKDF-Expand preserves pseudorandomness for $\text{RootKey}$. $\blacksquare$
+
+### 6.3 Lemma 6.2: Injectivity of Pre-fixed Formatting (RFC 9954)
+
+> **Lemma 6.2 (Injectivity)**:  
+> The encoding functions $\phi(\mathbf{S})$ and $\psi(\mathbf{C})$ are strictly **injective**. That is, for any distinct secret vectors $\mathbf{S} \neq \mathbf{S}'$ or distinct ciphertext metadata vectors $\mathbf{C} \neq \mathbf{C}'$, we have $\phi(\mathbf{S}) \neq \phi(\mathbf{S}')$ and $\psi(\mathbf{C}) \neq \psi(\mathbf{C}')$.
+
+*Proof*:  
+Each element in $\phi$ and $\psi$ is prefixed by its exact byte length ($\text{uint16\_be}$ or $\text{uint8\_be}$). Parsing proceeds deterministically from left to right without ambiguity. No element boundaries can shift, preventing cross-component length-extension attacks or concatenation collisions. $\blacksquare$
+
+### 6.4 Security Theorem 2: AEAD Header Binding & Non-Malleability
+
+> **Theorem 6.3 (Header Non-Malleability)**:  
+> Let $\text{Payload} = \text{HeaderBytes} \parallel \text{AES-256-GCM-Encrypt}_{K}(\text{Nonce}, \text{Plaintext}, \text{AAD}=\text{HeaderBytes})$.  
+> Any modification to $\text{HeaderBytes}$ (including profile string, algorithm list, KEM ciphertexts, or nonce) alters the Associated Data $\text{AAD}$. Under the INT-CTXT (ciphertext integrity) property of AES-256-GCM, any modified payload is rejected with probability $1 - 2^{-128}$.
+

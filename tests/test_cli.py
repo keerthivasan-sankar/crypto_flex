@@ -96,3 +96,37 @@ def test_cli_migrate_workflow(tmp_path):
 
     with open(dec_file, "rb") as f:
         assert f.read() == content
+
+
+def test_cli_migrate_streaming_workflow(tmp_path):
+    key1_file = str(tmp_path / "stream_key1.cflk")
+    bundle1_file = str(tmp_path / "stream_bundle1.json")
+    key2_file = str(tmp_path / "stream_key2.cflk")
+    bundle2_file = str(tmp_path / "stream_bundle2.json")
+
+    input_file = str(tmp_path / "stream_orig.bin")
+    enc1_file = str(tmp_path / "stream_enc1.cflx")
+    migrated_file = str(tmp_path / "stream_migrated.cflx")
+    dec_file = str(tmp_path / "stream_dec.bin")
+
+    password = "StreamMigratePassword456"
+    content = b"Large Stream Payload for Migration Test " * 500
+
+    with open(input_file, "wb") as f:
+        f.write(content)
+
+    assert main(["keygen", "--key", key1_file, "--bundle", bundle1_file, "--password", password]) == 0
+    assert main(["keygen", "--key", key2_file, "--bundle", bundle2_file, "--password", password]) == 0
+
+    # Encrypt stream with bundle 1
+    assert main(["encrypt", "--in", input_file, "--out", enc1_file, "--bundle", bundle1_file, "--stream"]) == 0
+
+    # Migrate stream enc1.cflx -> migrated.cflx --stream
+    assert main(["migrate", "--in", enc1_file, "--out", migrated_file, "--key", key1_file, "--new-bundle", bundle2_file, "--password", password, "--stream"]) == 0
+
+    # Decrypt migrated stream with key2
+    assert main(["decrypt", "--in", migrated_file, "--out", dec_file, "--key", key2_file, "--password", password, "--stream"]) == 0
+
+    with open(dec_file, "rb") as f:
+        assert f.read() == content
+

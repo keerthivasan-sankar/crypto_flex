@@ -320,3 +320,51 @@ def decrypt(
         raise
     except Exception:
         raise DecryptionError("decryption failed")
+
+
+# ---------------------------------------------------------------------------
+# Migration API (re-encrypting ciphertexts under new policies/bundles)
+# ---------------------------------------------------------------------------
+
+def migrate(
+    private_handles: list[object],
+    blob: bytes,
+    new_bundle: PublicBundle,
+    *,
+    min_profile: str | None = None,
+) -> bytes:
+    """Re-encrypt an encrypted byte blob under a new PublicBundle (offline migration).
+
+    Decrypts `blob` using `private_handles` (enforcing `min_profile` if specified)
+    and re-encrypts the plaintext under `new_bundle`.
+    """
+    plaintext = decrypt(private_handles, blob, min_profile=min_profile)
+    migrated_blob = encrypt(new_bundle, plaintext)
+    del plaintext
+    return migrated_blob
+
+
+def migrate_file(
+    private_handles: list[object],
+    input_path: str,
+    output_path: str,
+    new_bundle: PublicBundle,
+    *,
+    min_profile: str | None = None,
+    stream: bool = False,
+) -> None:
+    """Re-encrypt a `.cflx` file from disk under a new PublicBundle.
+
+    If `stream` is True, chunked streaming migration is used.
+    """
+    if stream:
+        from .streaming import migrate_stream
+        with open(input_path, "rb") as fin, open(output_path, "wb") as fout:
+            migrate_stream(private_handles, fin, fout, new_bundle, min_profile=min_profile)
+    else:
+        with open(input_path, "rb") as fin:
+            blob = fin.read()
+        migrated = migrate(private_handles, blob, new_bundle, min_profile=min_profile)
+        with open(output_path, "wb") as fout:
+            fout.write(migrated)
+

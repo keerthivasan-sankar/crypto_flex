@@ -1,7 +1,7 @@
 import pytest
 
-from cryptoflex.api import DecryptionError, recover_root_key
 from cryptoflex.header import CryptoflexHeader, HeaderParseError
+
 
 
 def test_cross_version_v1_header_fixture_decryption():

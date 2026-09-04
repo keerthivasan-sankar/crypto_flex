@@ -17,6 +17,8 @@ from .api import (
     derive_root_key,
     encrypt,
     establish_keys,
+    migrate,
+    migrate_file,
     recover_root_key,
 )
 from .ephemeral import WireMessage, ephemeral_decrypt, ephemeral_encrypt
@@ -37,7 +39,7 @@ from .sources import (
     SecuritySource,
     SourceUnavailableError,
 )
-from .streaming import decrypt_stream, encrypt_stream
+from .streaming import decrypt_stream, encrypt_stream, migrate_stream
 from .utils import zeroize
 
 __version__ = "0.4.1"
@@ -46,6 +48,10 @@ __all__ = [
     # high-level AEAD API (recommended for file encryption)
     "encrypt",
     "decrypt",
+    # migration API (crypto-agility re-encryption)
+    "migrate",
+    "migrate_file",
+    "migrate_stream",
     # ephemeral / forward-secret messaging API
     "ephemeral_encrypt",
     "ephemeral_decrypt",
@@ -89,3 +95,4 @@ __all__ = [
     "DecryptionError",
     "DowngradeError",
 ]
+

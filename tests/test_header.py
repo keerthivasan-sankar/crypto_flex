@@ -1,6 +1,7 @@
 import pytest
 
-from cryptoflex.header import FORMAT_VERSION, CryptoflexHeader, HeaderParseError
+from cryptoflex.header import CryptoflexHeader, HeaderParseError
+
 
 
 def test_header_round_trip_single_component():

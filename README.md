@@ -9,7 +9,7 @@ A local-first crypto-agility policy engine for Python.
 
 `cryptoflex` sits between your application and its cryptographic primitives. It selects the strongest combination of classical (X25519) and post-quantum (ML-KEM via [liboqs](https://github.com/open-quantum-safe/liboqs)) algorithms that the current machine can support, then hands you a single root key — without ever making a network call.
 
-> **Status:** unaudited research prototype. See [`TECHNICAL_REVIEW_1.md`](TECHNICAL_REVIEW_1.md) for a full self-assessment and what that means in practice before using this for anything sensitive.
+> **Status:** unaudited research prototype. See [`TECHNICAL_REVIEW_1.md`](TECHNICAL_REVIEW_.md) for a full self-assessment and what that means in practice before using this for anything sensitive.
 
 ---
 
@@ -103,6 +103,21 @@ with open("archive.tar.cflx", "rb") as fin, open("archive.tar", "wb") as fout:
     decrypt_stream(keyset.private_handles, fin, fout)
 ```
 
+### Crypto-Agility Migration Tooling
+
+Re-encrypt existing `.cflx` files or stream payloads under a target `PublicBundle` (e.g., upgrading legacy `classical_only` ciphertexts to `hybrid_standard` PQC):
+
+```python
+from cryptoflex import establish_keys, migrate, migrate_stream
+
+# Re-encrypt an in-memory blob to a new public bundle
+migrated_blob = migrate(old_keyset.private_handles, old_blob, new_bundle)
+
+# Re-encrypt a large file stream
+with open("old.cflx", "rb") as fin, open("migrated.cflx", "wb") as fout:
+    migrate_stream(old_keyset.private_handles, fin, fout, new_bundle)
+```
+
 ### Wiping sensitive memory
 
 ```python
@@ -121,7 +136,7 @@ zeroize(buf)  # overwrites in-place with 0x00
 cryptoflex keygen   --key identity.cflk --bundle identity.json [--kdf argon2id|scrypt]
 cryptoflex encrypt  --in plain.dat  --out plain.cflx  --bundle identity.json [--stream]
 cryptoflex decrypt  --in plain.cflx --out plain.dat   --key identity.cflk   [--stream]
-cryptoflex migrate  --in old.cflx   --out new.cflx    --key identity.cflk --new-bundle new.json
+cryptoflex migrate  --in old.cflx   --out new.cflx    --key identity.cflk --new-bundle new.json [--stream]
 cryptoflex info     file.cflx
 ```
 
@@ -156,12 +171,14 @@ To enforce a minimum: `decrypt(handles, blob, min_profile="hybrid_standard")`. T
 For complete technical details, see:
 - [Format & Cryptographic Specification](docs/FORMAT_SPECIFICATION.md)
 - [Threat Model & Security Analysis](docs/THREAT_MODEL.md)
+- [Enterprise Packaging & Supply Chain Distribution](docs/PACKAGING.md)
 
 ---
 
 ## Testing
 
-78 tests covering unit, integration, adversarial, and property-based (Hypothesis) cases.
+80 tests covering unit, integration, adversarial, property-based (Hypothesis), and migration cases.
+
 
 ```bash
 pip install -e ".[dev]"

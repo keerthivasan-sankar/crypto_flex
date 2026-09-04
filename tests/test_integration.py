@@ -95,3 +95,38 @@ def test_recover_rejects_wrong_private_handles():
     wrong_key = recover_root_key(keyset_b.private_handles, derived.header)
 
     assert wrong_key != derived.root_key
+
+
+def test_migrate_api_reencrypts_blob(hybrid_mock_profile, FixedProfileEngine):
+    import io
+    from cryptoflex.api import decrypt, encrypt, migrate
+    from cryptoflex.streaming import decrypt_stream, encrypt_stream, migrate_stream
+
+    # Create old keyset (classical) and new keyset (hybrid mock)
+    old_keyset = establish_keys(constraint=Constraint.FAST)
+    new_engine = FixedProfileEngine(hybrid_mock_profile)
+    new_keyset = establish_keys(new_engine)
+
+    plaintext = b"Sensitive long term document data needing migration to PQC standards"
+
+    # 1. Non-streaming blob migration test
+    old_blob = encrypt(old_keyset.public_bundle, plaintext)
+    migrated_blob = migrate(old_keyset.private_handles, old_blob, new_keyset.public_bundle)
+
+    # Migrated blob should decrypt using new keyset
+    decrypted_migrated = decrypt(new_keyset.private_handles, migrated_blob)
+    assert decrypted_migrated == plaintext
+
+    # 2. Streaming migration test
+    in_stream = io.BytesIO()
+    encrypt_stream(old_keyset.public_bundle, io.BytesIO(plaintext), in_stream)
+    in_stream.seek(0)
+
+    migrated_stream = io.BytesIO()
+    migrate_stream(old_keyset.private_handles, in_stream, migrated_stream, new_keyset.public_bundle)
+    migrated_stream.seek(0)
+
+    out_stream = io.BytesIO()
+    decrypt_stream(new_keyset.private_handles, migrated_stream, out_stream)
+    assert out_stream.getvalue() == plaintext
+
