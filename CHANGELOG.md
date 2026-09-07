@@ -12,6 +12,14 @@ numbers** that don't necessarily move together:
   change for anyone with existing encrypted files and will always be
   called out explicitly here.
 
+## [0.5.0] - Unreleased
+
+### Security Hardening (OQS Review Remediation)
+- **Error Normalization**: Modified `PQCSource.decapsulate()` to perform exact ciphertext length validation dynamically rather than blindly catching exceptions.
+- **Threat Model Accuracy**: Corrected claims regarding constant-time behavior at the Python layer and downgraded formal combiner theorems to a "Hybrid Combiner Design Goal".
+- **Documentation Alignment**: Rewrote `PACKAGING.md` to reflect the pure-Python build without embedded native wheels. Added a static reference `SBOM.md`.
+- **Reproducible Evidence**: Added deterministic representative implementation vectors in `tests/vectors/`.
+
 ## [0.4.1] - 2026-09-03
 
 ### Added

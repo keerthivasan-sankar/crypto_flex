@@ -14,10 +14,10 @@ jobs:
         python-version: ["3.10", "3.11", "3.12"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f # v5.1.1
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -39,10 +39,10 @@ jobs:
   test-with-real-pqc:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f # v5.1.1
         with:
           python-version: "3.12"
 
@@ -50,7 +50,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build build-essential libssl-dev
-          git clone --depth 1 https://github.com/open-quantum-safe/liboqs.git /tmp/liboqs
+          git clone --branch 0.10.1 --depth 1 https://github.com/open-quantum-safe/liboqs.git /tmp/liboqs
           cd /tmp/liboqs
           mkdir build && cd build
           cmake -GNinja -DBUILD_SHARED_LIBS=ON -DOQS_USE_OPENSSL=ON ..

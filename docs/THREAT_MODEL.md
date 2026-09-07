@@ -1,4 +1,4 @@
-# cryptoflex Threat Model & Security Analysis (v0.4.1)
+# cryptoflex Threat Model & Security Analysis (v0.5.0)
 
 This document formalizes the security goals, attacker models, cryptographic invariants, and known operational limitations of `cryptoflex`.
 
@@ -8,8 +8,9 @@ This document formalizes the security goals, attacker models, cryptographic inva
 
 1. **Hybrid Combiner Design Goal**:
    - The construction is intended to derive a root key from both component secrets so that compromise of one component does not by itself expose the other component's contribution. This is a design goal, not a formally proven security guarantee.
-   - Shor's algorithm on a quantum computer breaks X25519, but ML-KEM holds.
-   - An unforeseen mathematical breakdown in lattice math breaks ML-KEM, but X25519 holds.
+   - These statements describe the intended threat scenarios, not a proof that the combined construction retains the security of either component:
+     - Shor's algorithm on a quantum computer breaks X25519, but ML-KEM holds.
+     - An unforeseen mathematical breakdown in lattice math breaks ML-KEM, but X25519 holds.
 2. **Payload & Header Authenticated Encryption**:
    - The entire serialized header (version, profile ID, algorithm identifiers, KEM ciphertexts, AEAD nonce) is authenticated via AES-256-GCM Associated Data (AAD).
    - Any active tampering with algorithm tags or headers causes immediate decryption rejection prior to payload processing.
