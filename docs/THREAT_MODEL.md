@@ -22,7 +22,17 @@ This document formalizes the security goals, attacker models, cryptographic inva
 
    - Any active tampering with algorithm tags or headers causes decryption rejection before payload processing.
 
-3. **Local Machine Compromise**:
+3. **Forward Secrecy for Messaging**:
+
+   - `ephemeral_encrypt()` produces short-lived KEM ciphertexts per message. Compromising long-term keys later does not decrypt past ephemeral transcripts.
+
+4. **Uniform Failure Surface (No Error Oracles)**:
+
+   - All cryptographic failure paths (invalid key, malformed header, tampered ciphertext, bad AEAD tag) collapse into a uniform `DecryptionError`.
+
+   - Decapsulation handling normalizes externally visible failures. CryptoFlex does not claim constant-time behavior or complete timing-side-channel resistance at the Python layer.
+
+5. **Local Machine Compromise**:
 
    - If an attacker has `root` / administrator access to the machine while `cryptoflex` is running, they may be able to read process memory directly through OS debugging or memory-access interfaces.
 
