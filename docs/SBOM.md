@@ -4,6 +4,10 @@
 **Version:** 0.5.0
 **Date:** September 2026
 
+> [!NOTE]
+> **Static Reference SBOM**
+> This document is a static reference describing the intended dependencies, versions, and cryptographic primitives of the project. It is not an exact, dynamically resolved build SBOM (which would reflect precise, pinned dependency trees of a specific build environment).
+
 ## 1. Direct Python Dependencies
 
 | Package | Version Range | Purpose |

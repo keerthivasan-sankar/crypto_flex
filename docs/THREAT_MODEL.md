@@ -6,8 +6,8 @@ This document formalizes the security goals, attacker models, cryptographic inva
 
 ## 1. Primary Security Goals & Invariants
 
-1. **"At-Least-As-Strong-As-The-Strongest-Component" Security**:
-   - If either X25519 or ML-KEM remains unbroken by an attacker, the derived hybrid root key is secure.
+1. **Hybrid Combiner Design Goal**:
+   - The construction is intended to derive a root key from both component secrets so that compromise of one component does not by itself expose the other component's contribution. This is a design goal, not a formally proven security guarantee.
    - Shor's algorithm on a quantum computer breaks X25519, but ML-KEM holds.
    - An unforeseen mathematical breakdown in lattice math breaks ML-KEM, but X25519 holds.
 2. **Payload & Header Authenticated Encryption**:

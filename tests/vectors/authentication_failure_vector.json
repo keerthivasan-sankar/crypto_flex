@@ -1,0 +1,12 @@
+{
+    "description": "Vector representing an authentication failure (e.g., AEAD tag mismatch or header manipulation)",
+    "algorithm": "hybrid_standard",
+    "inputs": {
+        "tampered_header_or_tag": "true",
+        "tampered_bit": "0x01 flipped in AAD"
+    },
+    "expected_failure": {
+        "exception": "DecryptionError",
+        "reason": "Tampered AAD causes AES-GCM to reject the ciphertext, collapsing into a unified DecryptionError at the API boundary."
+    }
+}
