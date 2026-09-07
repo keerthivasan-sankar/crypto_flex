@@ -10,6 +10,10 @@ For large files (multi-gigabyte payloads), buffering the entire file into
 RAM at once is impractical.  This module implements chunked AEAD using
 AES-256-GCM without memory overhead.
 
+A root key is not intended for unlimited streaming use. As a cryptographic
+design parameter, callers should enforce a maximum usage limit (e.g., total
+bytes or chunk count) appropriate for AES-256-GCM.
+
 To prevent chunk-reordering, truncation, or insertion attacks:
   - Each chunk is encrypted using a unique 12-byte nonce formed by
     concatenating the header's 8-byte base nonce with a 4-byte big-endian
@@ -40,7 +44,8 @@ from .header import CryptoflexHeader, HeaderParseError
 from .profiles import get_profile
 
 DEFAULT_CHUNK_SIZE = 64 * 1024  # 64 KB per chunk
-MAX_CHUNK_SIZE = 9 * 1024 * 1024  # 9 MB — must match decrypt_stream sanity limit
+MAX_CHUNK_PLAINTEXT_SIZE = 9 * 1024 * 1024  # 9 MB
+MAX_CHUNK_CIPHERTEXT_SIZE = MAX_CHUNK_PLAINTEXT_SIZE + 16
 MAX_HEADER_SIZE = 64 * 1024  # 64 KB — enough for any realistic future profile
 
 
@@ -75,8 +80,8 @@ def encrypt_stream(
     base_nonce = derived.header.nonce
     if base_nonce is None:  # v2 headers always have a nonce
         raise ValueError("derive_root_key() produced a v1 header with no nonce — cannot stream-encrypt")
-    if chunk_size > MAX_CHUNK_SIZE:
-        raise ValueError(f"chunk_size {chunk_size} exceeds MAX_CHUNK_SIZE {MAX_CHUNK_SIZE}; reduce to ensure decryptability")
+    if chunk_size <= 0 or chunk_size > MAX_CHUNK_PLAINTEXT_SIZE:
+        raise ValueError(f"chunk_size {chunk_size} must be between 1 and {MAX_CHUNK_PLAINTEXT_SIZE}")
 
     output_stream.write(header_bytes)
     root_key_buf = bytearray(derived.root_key)
@@ -138,6 +143,11 @@ def decrypt_stream(
 
     Validates header, min_profile, per-chunk AEAD tags, and sequence order.
     Raises DecryptionError or DowngradeError on failure.
+
+    **Security Note**: Output is written chunk-by-chunk. If authentication fails
+    partway through, the output stream will contain partial plaintext. Callers
+    should use atomic temporary files or explicit transactional rollback if they
+    require all-or-nothing file integrity.
     """
     # Read initial bytes to parse header
     initial_bytes = input_stream.read(MAX_HEADER_SIZE)
@@ -196,7 +206,7 @@ def decrypt_stream(
                 # Terminal marker reached
                 break
 
-            if ct_len > MAX_CHUNK_SIZE:  # matches encrypt_stream's cap
+            if ct_len > MAX_CHUNK_CIPHERTEXT_SIZE:
                 raise DecryptionError("decryption failed: chunk size exceeds limit")
 
             ct_with_tag = reader.read_exact(ct_len)
@@ -227,6 +237,9 @@ def migrate_stream(
 
     Performs chunk-by-chunk in-memory streaming re-encryption without using temporary files on disk.
     Each chunk is decrypted, re-encrypted under the new key/header, and wiped from RAM immediately (best-effort memory hygiene).
+
+    **Security Note**: Output is written progressively. If migration fails, the
+    output stream will be partially written.
     """
     initial_bytes = input_stream.read(MAX_HEADER_SIZE)
     if not initial_bytes:
@@ -296,7 +309,7 @@ def migrate_stream(
             if ct_len == 0:
                 break
 
-            if ct_len > MAX_CHUNK_SIZE:
+            if ct_len > MAX_CHUNK_CIPHERTEXT_SIZE:
                 raise DecryptionError("decryption failed: chunk size exceeds limit")
 
             ct_with_tag = reader.read_exact(ct_len)
