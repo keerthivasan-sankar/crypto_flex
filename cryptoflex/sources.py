@@ -225,23 +225,21 @@ class PQCSource(SecuritySource):
     def decapsulate(self, private_key_handle: object, ciphertext: bytes) -> bytes:
         """Recover the shared secret from a KEM ciphertext.
 
-        Implicit rejection: if liboqs raises ANY exception (e.g. a fast
-        length-check failure in the C binding), we return random bytes of
-        the correct shared-secret length instead of propagating the error
-        immediately. This forces the caller's AEAD tag check (which runs
-        in constant time) to fail later, closing the timing oracle that
-        would otherwise let an attacker distinguish "rejected because of
-        length" (~2 µs) from "rejected by real decapsulation" (~300 µs).
+        Error normalization: We validate the exact ciphertext length before
+        passing it to liboqs. For valid-length ciphertexts, liboqs handles
+        its own implicit rejection. We do not catch arbitrary exceptions
+        here, so genuine programming/native failures are not masked as
+        cryptographic failures.
         """
         self._require_available()
         kem: Any = private_key_handle  # the live oqs.KeyEncapsulation from generate_keypair
-        try:
-            return kem.decap_secret(ciphertext)
-        except Exception:
-            # Return random garbage of the expected shared-secret length.
-            # The AEAD tag check downstream will reject the derived key.
-            ss_len = kem.details.get("length_shared_secret", 32)
-            return os.urandom(ss_len)
+        
+        # Exact length validation
+        expected_len = kem.details.get("length_ciphertext")
+        if expected_len is not None and len(ciphertext) != expected_len:
+            raise ValueError(f"Invalid ciphertext length for {self.kem_name}: expected {expected_len}, got {len(ciphertext)}")
+
+        return kem.decap_secret(ciphertext)
 
     def serialize_private(self, private_key_handle: object) -> bytes:
         self._require_available()

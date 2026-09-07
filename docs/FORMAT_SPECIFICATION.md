@@ -130,9 +130,11 @@ The decrypted JSON payload contains the `profile_id`, the recipient `PublicBundl
 
 ---
 
-## 6. Formal Hybrid Combiner Specification & Security Model
+## 6. Hybrid Combiner Specification & Design Rationale
 
-This section provides the mathematical formalization of the `cryptoflex` hybrid KEM combiner $\mathcal{C}(\mathbf{S}, \mathbf{C})$ required for formal independent cryptographic review.
+This section provides the mathematical formalization of the `cryptoflex` hybrid KEM combiner $\mathcal{C}(\mathbf{S}, \mathbf{C})$.
+
+**Important Disclaimer:** The construction described below is a project-specific construction intended to combine component secrets using HKDF-SHA384. It currently requires independent cryptographic review, and the design rationale presented does not constitute a formal IND-CCA security proof.
 
 ### 6.1 Mathematical Definition
 
@@ -149,25 +151,25 @@ $$\text{PRK} = \text{HKDF-Extract}(0^{48}, \text{IKM})$$
 
 $$\text{RootKey} = \text{HKDF-Expand}(\text{PRK}, \text{info}, 32)$$
 
-### 6.2 Security Theorem 1: Unconditional Dual-KEM Hybrid Security
+### 6.2 Security Intuition: Dual-KEM Hybrid Design Rationale
 
-> **Theorem 6.1 (Dual-PRF Hybrid Security Bound)**:  
-> Suppose HKDF-Extract is modeled as a dual pseudorandom function (Dual-PRF) or random oracle. If **at least one** component mechanism $\text{KEM}_k \in \{\text{KEM}_1, \dots, \text{KEM}_M\}$ is IND-CCA2 secure (so that secret $S_k$ is computationally indistinguishable from uniform over $\{0,1\}^{|S_k|}$ given $C_k$), then the derived $\text{RootKey}$ is computationally indistinguishable from a uniform random 256-bit key to any polynomial-time adversary $\mathcal{A}$, even if all remaining $M-1$ components are completely broken.
+> **Design Rationale (Dual-PRF Expectation)**:  
+> The design anticipates that if HKDF-Extract acts as a dual pseudorandom function (Dual-PRF) or random oracle, and if **at least one** component mechanism $\text{KEM}_k \in \{\text{KEM}_1, \dots, \text{KEM}_M\}$ is secure, then the derived $\text{RootKey}$ should be indistinguishable from a uniform random 256-bit key.
 
-*Proof Sketch*:  
-Since $S_k$ is computationally uniform given $C_k$, the concatenated string $\text{IKM} = \phi(\mathbf{S})$ contains at least $|S_k|$ bits of high min-entropy. Under the Dual-PRF property of HKDF-Extract (RFC 5869 / Krawczyk 2010), $\text{HKDF-Extract}(0^{48}, \text{IKM})$ yields a pseudorandom key $\text{PRK}$ indistinguishable from uniform. Expanding $\text{PRK}$ with context $\text{info}$ via HKDF-Expand preserves pseudorandomness for $\text{RootKey}$. $\blacksquare$
+*Rationale Sketch*:  
+If $S_k$ provides sufficient min-entropy given $C_k$, the concatenated string $\text{IKM} = \phi(\mathbf{S})$ should carry that entropy. Under the Dual-PRF property of HKDF-Extract (RFC 5869 / Krawczyk 2010), $\text{HKDF-Extract}(0^{48}, \text{IKM})$ is expected to yield a pseudorandom key $\text{PRK}$. Expanding $\text{PRK}$ with context $\text{info}$ via HKDF-Expand then preserves pseudorandomness for $\text{RootKey}$. Note: this is an expected property, not a formal security proof.
 
-### 6.3 Lemma 6.2: Injectivity of Pre-fixed Formatting (RFC 9954)
+### 6.3 Design Rationale: Injectivity of Pre-fixed Formatting (RFC 9954)
 
-> **Lemma 6.2 (Injectivity)**:  
-> The encoding functions $\phi(\mathbf{S})$ and $\psi(\mathbf{C})$ are strictly **injective**. That is, for any distinct secret vectors $\mathbf{S} \neq \mathbf{S}'$ or distinct ciphertext metadata vectors $\mathbf{C} \neq \mathbf{C}'$, we have $\phi(\mathbf{S}) \neq \phi(\mathbf{S}')$ and $\psi(\mathbf{C}) \neq \psi(\mathbf{C}')$.
+> **Design Rationale (Injectivity)**:  
+> The encoding functions $\phi(\mathbf{S})$ and $\psi(\mathbf{C})$ are designed to be strictly **injective**.
 
-*Proof*:  
-Each element in $\phi$ and $\psi$ is prefixed by its exact byte length ($\text{uint16\_be}$ or $\text{uint8\_be}$). Parsing proceeds deterministically from left to right without ambiguity. No element boundaries can shift, preventing cross-component length-extension attacks or concatenation collisions. $\blacksquare$
+*Rationale*:  
+Each element in $\phi$ and $\psi$ is prefixed by its exact byte length ($\text{uint16\_be}$ or $\text{uint8\_be}$). Parsing proceeds deterministically from left to right without ambiguity. No element boundaries can shift, which is intended to prevent cross-component length-extension attacks or concatenation collisions.
 
-### 6.4 Security Theorem 2: AEAD Header Binding & Non-Malleability
+### 6.4 Design Rationale: AEAD Header Binding & Non-Malleability
 
-> **Theorem 6.3 (Header Non-Malleability)**:  
+> **Design Rationale (Header Non-Malleability)**:  
 > Let $\text{Payload} = \text{HeaderBytes} \parallel \text{AES-256-GCM-Encrypt}_{K}(\text{Nonce}, \text{Plaintext}, \text{AAD}=\text{HeaderBytes})$.  
-> Any modification to $\text{HeaderBytes}$ (including profile string, algorithm list, KEM ciphertexts, or nonce) alters the Associated Data $\text{AAD}$. Under the INT-CTXT (ciphertext integrity) property of AES-256-GCM, any modified payload is rejected with probability $1 - 2^{-128}$.
+> Any modification to $\text{HeaderBytes}$ (including profile string, algorithm list, KEM ciphertexts, or nonce) alters the Associated Data $\text{AAD}$. This relies on the standard INT-CTXT (ciphertext integrity) property of AES-256-GCM to reject modified payloads.
 

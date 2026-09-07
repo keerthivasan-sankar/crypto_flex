@@ -17,7 +17,7 @@ This document formalizes the security goals, attacker models, cryptographic inva
    - `ephemeral_encrypt()` produces short-lived KEM ciphertexts per message. Compromising long-term keys later does not decrypt past ephemeral transcripts.
 4. **Uniform Failure Surface (No Error Oracles)**:
    - All cryptographic failure paths (invalid key, malformed header, tampered ciphertext, bad AEAD tag) collapse into a uniform `DecryptionError`.
-   - `PQCSource.decapsulate()` uses implicit rejection to prevent length-based timing side-channels.
+   - Decapsulation handling normalizes externally visible failures. CryptoFlex does not claim constant-time behavior or complete timing-side-channel resistance at the Python layer.
 
 ---
 
@@ -48,7 +48,7 @@ This document formalizes the security goals, attacker models, cryptographic inva
 1. **Python Heap Management & Garbage Collection**:
    - In C Python, immutable `bytes` objects cannot be zeroized in-place natively without unsafe interpreter hacks. While `del` is invoked eagerly, actual memory release depends on Python's garbage collector.
    - Operating system swap file locking (`mlock`) is not yet enforced at the Python level.
-2. **Native Side-Channel Resistance**:
-   - `cryptoflex` relies on `liboqs` (C library) for constant-time ML-KEM execution and Python's standard `cryptography` package for X25519/AES-GCM. Any microarchitectural side-channels in the underlying C/Assembly implementations are out of scope for this policy layer.
+2. **Side-Channel Resistance Limitations**:
+   - `cryptoflex` wraps underlying C libraries. It does not provide constant-time execution at the Python layer, and any microarchitectural side-channels in the underlying C/Assembly implementations are out of scope.
 3. **Local Machine Compromise**:
    - If an attacker has `root` / administrator access to the machine while `cryptoflex` is running, they can read memory directly via `/proc/self/mem` or OS debugging interfaces.

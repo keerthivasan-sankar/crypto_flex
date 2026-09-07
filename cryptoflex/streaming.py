@@ -226,7 +226,7 @@ def migrate_stream(
     """Re-encrypt a chunked binary stream under a new PublicBundle (offline migration).
 
     Performs chunk-by-chunk in-memory streaming re-encryption without using temporary files on disk.
-    Each chunk is decrypted, re-encrypted under the new key/header, and zeroized in RAM immediately.
+    Each chunk is decrypted, re-encrypted under the new key/header, and wiped from RAM immediately (best-effort memory hygiene).
     """
     initial_bytes = input_stream.read(MAX_HEADER_SIZE)
     if not initial_bytes:

@@ -16,7 +16,7 @@ numbers** that don't necessarily move together:
 
 ### Added
 - **Argon2id Keystore Protection**: Upgraded `cryptoflex.keystore` to support Argon2id password key derivation (`CFLA` header magic; $m=64\text{MB}, t=3, p=4$) as the new default for `export_keyset_bytes()`, while maintaining full backward compatibility with Scrypt (`CFLK` magic header).
-- **In-Place Memory Zeroization**: Added `cryptoflex.utils.zeroize(buffer)` helper to securely wipe sensitive bytearrays and memoryviews in-place (`0x00`) to mitigate RAM retention risk.
+- **Best-Effort Memory Hygiene**: Added `cryptoflex.utils.zeroize(buffer)` helper to wipe sensitive `bytearray` and `memoryview` objects in-place (`0x00`). Note that Python's memory allocator makes true deterministic zeroization impossible (e.g., intermediate immutable `bytes` copies may persist), but this provides defense-in-depth against simple RAM retention risks.
 - **CLI Migration Command**: Added `cryptoflex migrate` CLI subcommand allowing users to re-encrypt existing `.cflx` files under a new recipient `PublicBundle` to upgrade security profiles completely offline.
 
 ## [0.4.0] - 2026-09-03

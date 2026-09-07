@@ -26,7 +26,7 @@ Standard installations of post-quantum libraries often require compiling the und
 
 ## 2. Automated Multi-Platform CI Wheel Pipeline
 
-`cryptoflex` utilizes `cibuildwheel` and GitHub Actions to build deterministic, pre-compiled wheels.
+`cryptoflex` utilizes `cibuildwheel` and GitHub Actions to perform cross-platform artifact builds.
 
 ### Workflow Configuration (`.github/workflows/build-wheels.yml`)
 
@@ -104,19 +104,20 @@ python -c "import cryptoflex; print(cryptoflex.__version__)"
 
 ---
 
-## 4. Supply Chain Transparency & Security Verification
+## 4. Supply Chain Transparency & Security Verification (Planned)
+
+The following supply-chain security features are planned for future reviewed releases:
 
 ### 4.1 Software Bill of Materials (SBOM)
-Every `cryptoflex` release includes an updated CycloneDX / SPDX SBOM (`SBOM.md`) detailing all direct Python dependencies (`cryptography`, `liboqs-python`), underlying C libraries (`OpenSSL`, `liboqs`), and cryptographic algorithms.
+We plan to include an updated CycloneDX / SPDX SBOM detailing all direct Python dependencies, underlying C libraries, and cryptographic algorithms for every release. (Currently, a static `SBOM.md` is provided for reference).
 
 ### 4.2 Artifact Cryptographic Hashes & Signatures
-Release wheels are accompanied by SHA-256 checksum manifests signed via Cosign / GPG:
+In future releases, wheels will be accompanied by SHA-256 checksum manifests signed via Cosign / GPG to enable reproducible double-build verification and Sigstore provenance:
 
 ```bash
-# Verify checksums
+# Planned verification workflow:
 sha256sum -c SHA256SUMS
 
-# Verify signature
 cosign verify-blob \
   --certificate github-actions-cert.pem \
   --signature SHA256SUMS.sig \

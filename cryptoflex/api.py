@@ -304,7 +304,7 @@ def decrypt(
         header_bytes = blob[:consumed]
         aead_payload = blob[consumed:]
 
-        # Convert to bytearray for in-place zeroization upon return
+        # Convert to bytearray for best-effort memory hygiene upon return
         root_key_buf = bytearray(raw_root_key)
         del raw_root_key
 

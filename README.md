@@ -160,11 +160,11 @@ To enforce a minimum: `decrypt(handles, blob, min_profile="hybrid_standard")`. T
 
 ## Design notes
 
-**Combiner.** The root key is derived via HKDF-SHA384 over all shared secrets and ciphertexts, with injective length-prefixed encoding and a profile-scoped context string. This follows the structure of [RFC 9954](https://www.rfc-editor.org/info/rfc9954) and ensures the hybrid key is no weaker than the strongest component.
+**Combiner.** The design is intended to combine the component secrets using HKDF-SHA384 with injective length-prefixed encoding and profile-scoped context. This is a project-specific construction requiring independent cryptographic review; the repository does not claim a formal security proof.
 
 **Header integrity.** The full serialized header is passed as Associated Data to AES-256-GCM. Any modification to algorithm identifiers, the nonce, or the ciphertext components causes decryption to fail before the payload is touched.
 
-**Error surface.** All decryption failures — wrong key, corrupted header, tampered ciphertext, authentication failure — surface as a single `DecryptionError`. Callers cannot distinguish between failure modes, which eliminates error side-channels.
+**Error surface.** All decryption failures — wrong key, corrupted header, tampered ciphertext, authentication failure — surface as a single `DecryptionError`, reducing error-type disclosure. This should not be interpreted as a guarantee of constant-time behavior or complete side-channel resistance.
 
 **Password hardening.** Keystore wrapping uses Argon2id (m=32 MB, t=3, p=1) by default, or Scrypt (N=2¹⁷, r=8, p=1) for compatibility. The algorithm is stored in the file header so the right KDF is always used on import.
 

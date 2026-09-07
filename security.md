@@ -63,6 +63,6 @@ help route it correctly.
 audit — see [`TECHNICAL_REVIEW_1.md`](TECHNICAL_REVIEW_1.md) for a fuller
 picture of what's been verified so far (Hypothesis fuzzing, 78 automated tests, CI, two
 previously-found-and-fixed validation bugs) versus what hasn't
-(formal audit, constant-time Python boundary). Please keep that context in mind
+(formal independent security audit and evaluation of side-channel properties across the Python and native cryptographic layers). Please keep that context in mind
 both when deciding whether to rely on this library for anything
 sensitive, and when assessing the severity of anything you find.
