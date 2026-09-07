@@ -46,15 +46,16 @@ For all currently registered CryptoFlex components, the shared-secret representa
 
 ### 2.2 Info Context String (`info`)
 
-To guarantee strict context binding and prevent cross-algorithm substitution, the HKDF `info` parameter is constructed as:
+To guarantee strict context binding and prevent cross-algorithm substitution, the HKDF `info` parameter is constructed exactly as:
 
-$$\text{info} = \text{"cryptoflex-combiner-v1"} \parallel \text{len}(A_1) \parallel A_1 \parallel \text{len}(C_1) \parallel C_1 \parallel \dots \parallel \text{len}(A_M) \parallel A_M \parallel \text{len}(C_M) \parallel C_M$$
+$$\text{info} = \text{uint16\_be}(2) \parallel \text{uint32\_be}(|ctx|) \parallel ctx \parallel \text{uint16\_be}(M) \parallel \bigparallel_{i=1}^M \left( \text{uint32\_be}(|A_i|) \parallel A_i \parallel \text{uint32\_be}(|C_i|) \parallel C_i \right)$$
 
 where:
-- $A_i$ is the UTF-8 algorithm identifier string.
+- $ctx$ is the fixed context label: `"cryptoflex-hybrid-kem-combiner"`
+- $M$ is the number of component key encapsulations.
+- $A_i$ is the UTF-8 algorithm identifier string for component $i$.
 - $C_i$ is the raw ciphertext bytes for component $i$.
-- $\text{len}(A_i)$ is a 1-byte big-endian length prefix.
-- $\text{len}(C_i)$ is a 2-byte big-endian length prefix.
+- $\text{uint32\_be}$ and $\text{uint16\_be}$ denote 4-byte and 2-byte big-endian integers, respectively.
 
 ### 2.3 Key Extraction & Expansion
 
@@ -146,7 +147,7 @@ The combiner mapping $\mathcal{C}: (\{0,1\}^*)^M \times (\{0,1\}^* \times \{0,1\
 
 $$\text{IKM} = \phi(\mathbf{S}) = \bigparallel_{i=1}^M S_i$$
 
-$$\text{info} = \psi(\mathbf{C}) = \text{"cryptoflex-combiner-v1"} \parallel \bigparallel_{i=1}^M \left( \text{uint8\_be}(|A_i|) \parallel A_i \parallel \text{uint16\_be}(|C_i|) \parallel C_i \right)$$
+$$\text{info} = \psi(\mathbf{C}) = \text{uint16\_be}(2) \parallel \text{uint32\_be}(|ctx|) \parallel ctx \parallel \text{uint16\_be}(M) \parallel \bigparallel_{i=1}^M \left( \text{uint32\_be}(|A_i|) \parallel A_i \parallel \text{uint32\_be}(|C_i|) \parallel C_i \right)$$
 
 $$\text{PRK} = \text{HKDF-Extract}(0^{48}, \text{IKM})$$
 
