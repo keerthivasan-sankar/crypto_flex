@@ -42,9 +42,10 @@ for anything more urgent.
 
 | Version | Supported | Notes |
 |---------|-----------|-------|
-| 0.4.x   | Supported     | Latest release (v0.4.1 — Argon2id, memory zeroization, CLI migrate) |
-| 0.3.x   | Maintenance   | Legacy v2 header format |
-| 0.2.x   | Maintenance   | Initial security fixes |
+| 0.5.x   | Supported     | Latest stable release: v0.5.0, Current development/remediation branch: 0.5.1-dev |
+| 0.4.x   | Maintenance   | Legacy v2 header format (v0.4.1) |
+| 0.3.x   | End of life   | Legacy v2 header format |
+| 0.2.x   | End of life   | Initial security fixes |
 | 0.1.x   | End of life   | Obsolete prototype |
 
 ## Scope

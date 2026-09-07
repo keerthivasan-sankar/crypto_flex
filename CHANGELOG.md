@@ -12,9 +12,17 @@ numbers** that don't necessarily move together:
   change for anyone with existing encrypted files and will always be
   called out explicitly here.
 
-## [0.5.0] - Unreleased
+## [0.5.1] - Unreleased
 
-### Security Hardening (OQS Review Remediation)
+### Security Hardening (OQS Review Remediation Phase A)
+- **Policy Fail-Closed**: Enforce strict validation of `algorithm_status.json` metadata; missing or unknown status causes immediate profile rejection.
+- **Strict Keystore Structural Validation**: Keystore import now enforces exact counts of components in `PublicBundle` and matching of algorithms to prevent subset/superset downgrades.
+- **Independent Test Vectors**: Added independent implementation in `tests/test_vectors.py` to verify JSON KAT vectors using `cryptography` primitives independently of CryptoFlex.
+- **CI Modernization**: Pinned liboqs CI integration to the stable `0.16.0` release.
+
+## [0.5.0] - 2026-09-07
+
+### Security Hardening (OQS Review Prep)
 - **Error Normalization**: Modified `PQCSource.decapsulate()` to perform exact ciphertext length validation dynamically rather than blindly catching exceptions.
 - **Threat Model Accuracy**: Corrected claims regarding constant-time behavior at the Python layer and downgraded formal combiner theorems to a "Hybrid Combiner Design Goal".
 - **Documentation Alignment**: Rewrote `PACKAGING.md` to reflect the pure-Python build without embedded native wheels. Added a static reference `SBOM.md`.

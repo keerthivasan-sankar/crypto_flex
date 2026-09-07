@@ -1,7 +1,7 @@
 """
 verify_local.py
 ================
-Comprehensive Local Verification Script for cryptoflex v0.4.1.
+Comprehensive Local Verification Script for cryptoflex v0.5.1-dev.
 
 Demonstrates:
   1. Key Generation via PolicyEngine
@@ -44,7 +44,7 @@ def print_step(title: str):
 
 
 def main():
-    print("Running Local Cryptographic Verification for cryptoflex v0.4.1...")
+    print("Running Local Cryptographic Verification for cryptoflex v0.5.1-dev...")
 
     # --- 1. Establish Keys ---
     print_step("1. Establishing Keys via PolicyEngine (Constraint: FAST)")
