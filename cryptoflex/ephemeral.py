@@ -1,8 +1,7 @@
-"""
 cryptoflex.ephemeral
 ======================
 
-Ephemeral (forward-secret) encryption for messaging workloads.
+Ephemeral encryption for messaging workloads.
 
 Design
 -------
@@ -11,9 +10,9 @@ the sender can look up the recipient's public key, encrypt, and the
 recipient decrypts later with the same private key.
 
 For *messaging*, each message should use fresh ephemeral keys that are
-discarded immediately after use.  If an attacker captures the private
-key of one party later, they still cannot decrypt past messages because
-the ephemeral keys were never saved anywhere.
+discarded immediately after use. This prevents reuse of the sender's
+ephemeral secret across messages, but it does not provide full forward
+secrecy against later compromise of the recipient's long-term private key.
 
 How it works
 -------------
@@ -33,15 +32,12 @@ EphemeralKeySet or intermediate object is needed.
 Wire Format
 -----------
 ``ephemeral_encrypt()`` returns a ``WireMessage`` dataclass containing a
-single ``encrypted_blob`` field — a self-contained bytes object identical
-to the output of ``encrypt()``:
+single ``encrypted_blob`` field — a self-contained bytes object:
 
-    header_bytes || AES-GCM(ciphertext || 16-byte tag)
+    header_bytes || AES-GCM(plaintext, associated_data=header_bytes)
 
 The header carries the KEM ciphertexts (i.e., the sender's ephemeral
-public material) so the recipient can recover the root key.  Since a new
-root key is derived per message, each message is independently forward-
-secret.
+public material) so the recipient can recover the root key.
 """
 
 from __future__ import annotations

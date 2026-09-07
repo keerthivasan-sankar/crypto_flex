@@ -24,7 +24,7 @@ This document formalizes the security goals, attacker models, cryptographic inva
 
 3. **Forward Secrecy for Messaging**:
 
-   - `ephemeral_encrypt()` produces short-lived KEM ciphertexts per message. Compromising long-term keys later does not decrypt past ephemeral transcripts.
+   - **Per-message ephemeral encryption:** `ephemeral_encrypt()` generates fresh sender-side ephemeral key material for each message. However, archived messages remain recoverable if the recipient's long-term private key is later compromised. Therefore, the current implementation does not provide full forward secrecy against compromise of the recipient's long-term private key.
 
 4. **Uniform Failure Surface (No Error Oracles)**:
 
@@ -36,13 +36,17 @@ This document formalizes the security goals, attacker models, cryptographic inva
 
    - If an attacker has `root` / administrator access to the machine while `cryptoflex` is running, they may be able to read process memory directly through OS debugging or memory-access interfaces.
 
+6. **Public key / bundle authenticity**:
+
+   - CryptoFlex does not currently authenticate the identity associated with a `PublicBundle`. An application that receives a bundle must obtain and authenticate it using an external trusted distribution mechanism. An attacker capable of substituting a recipient's public bundle may redirect encryption to attacker-controlled keys.
+
 ---
 
 ## 2. Attacker Models
 
 ### 2.1 Harvest-Now-Decrypt-Later (HNDL) Adversary
 * **Capabilities**: Passive network monitor or storage archivist capturing encrypted files/messages today. The adversary possesses (or will possess in 10-30 years) a Cryptographically Relevant Quantum Computer (CRQC).
-* **Mitigation**: `hybrid_standard` and `hybrid_high` profiles embed NIST FIPS 203 (ML-KEM) alongside X25519. The HKDF-SHA384 combiner extracts entropy from both, ensuring the ciphertext cannot be decrypted even if classical ECC is broken.
+* **Mitigation**: The hybrid profiles combine X25519 with ML-KEM. The design goal is to retain security from an uncompromised component if another component is broken; this property has not been independently proven for the CryptoFlex-specific construction.
 
 ### 2.2 Active Man-in-the-Middle (MitM) / File Tampering Adversary
 * **Capabilities**: Can modify encrypted blobs in transit or on disk, flip bits in headers, duplicate/reorder stream chunks, or downgrade requested algorithm profiles.

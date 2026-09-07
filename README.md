@@ -9,7 +9,7 @@ A local-first crypto-agility policy engine for Python.
 
 `cryptoflex` sits between your application and its cryptographic primitives. It selects the strongest combination of classical (X25519) and post-quantum (ML-KEM via [liboqs](https://github.com/open-quantum-safe/liboqs)) algorithms that the current machine can support, then hands you a single root key — without ever making a network call.
 
-> **Status:** unaudited research prototype. See [`TECHNICAL_REVIEW_1.md`](TECHNICAL_REVIEW_.md) for a full self-assessment and what that means in practice before using this for anything sensitive.
+> **Status:** unaudited research prototype. See [`TECHNICAL_REVIEW_1.md`](TECHNICAL_REVIEW_1.md) for a full self-assessment and what that means in practice before using this for anything sensitive.
 
 ---
 
@@ -55,9 +55,9 @@ ciphertext = encrypt(recipient.public_bundle, b"your plaintext here")
 plaintext = decrypt(recipient.private_handles, ciphertext)
 ```
 
-### Ephemeral messaging (forward secrecy)
+### Ephemeral messaging
 
-Each call to `ephemeral_encrypt` generates a fresh keypair, uses it once, and discards it. Past messages stay safe even if long-term keys are later compromised.
+**Per-message ephemeral encryption:** Each message uses fresh sender-side ephemeral key material, preventing reuse of the sender's ephemeral secret across messages. This does not provide full forward secrecy against later compromise of the recipient's long-term private key.
 
 ```python
 from cryptoflex import establish_keys, ephemeral_encrypt, ephemeral_decrypt
@@ -171,7 +171,7 @@ To enforce a minimum: `decrypt(handles, blob, min_profile="hybrid_standard")`. T
 For complete technical details, see:
 - [Format & Cryptographic Specification](docs/FORMAT_SPECIFICATION.md)
 - [Threat Model & Security Analysis](docs/THREAT_MODEL.md)
-- [Enterprise Packaging & Supply Chain Distribution](docs/PACKAGING.md)
+- [Packaging & Supply Chain Distribution](docs/PACKAGING.md)
 
 ---
 
@@ -197,7 +197,7 @@ python verify_local.py
 The original architecture and threat model of the policy engine are described in the following paper:
 - [cryptoflex: A Local-First Crypto-Agility Policy Engine for Hybrid](https://figshare.com/articles/journal_contribution/cryptoflex_A_Local-First_Crypto-Agility_Policy_Engine_for_Hybrid/33297369)
 
-> **Note:** This paper reflects an early architecture of the project. The codebase has since evolved significantly (including authenticated headers, Argon2id KDF, memory zeroization, streaming AEAD, and ephemeral forward secrecy), which are not covered in the original manuscript.
+> **Note:** This paper reflects an early architecture of the project. The codebase has since evolved significantly (including authenticated headers, Argon2id KDF, memory zeroization, streaming AEAD, and ephemeral messaging), which are not covered in the original manuscript.
 
 ---
 
