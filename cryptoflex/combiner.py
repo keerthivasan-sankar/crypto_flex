@@ -7,10 +7,9 @@ into a single root key.
 
 Security property (informal)
 ------------------------------
-The combined key must be at least as secure as the STRONGEST input
-source: an attacker who fully breaks every source except one still
-cannot recover the combined key, provided that one unbroken source's
-secret and ciphertext are bound into the derivation.
+The intended design goal is that compromise of one component does not by
+itself reveal the combined key when another component remains secure.
+This has not been independently proven for the CryptoFlex construction.
 
 Combiner specification
 -----------------------

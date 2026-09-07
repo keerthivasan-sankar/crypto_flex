@@ -1,4 +1,4 @@
-# cryptoflex Format & Cryptographic Specification (v0.4.1)
+# cryptoflex Format & Cryptographic Specification (v0.5.0)
 
 This document provides a formal technical specification of the data formats, key derivation mechanisms, and framing rules implemented by `cryptoflex`.
 
@@ -37,11 +37,12 @@ The hybrid root key is derived using **HKDF-SHA384** (RFC 5869) over all compone
 
 ### 2.1 Input Keying Material (IKM)
 
-The IKM is formed by concatenating all 2-byte length-prefixed component shared secrets:
+The IKM is formed by concatenating the fixed-length component shared secrets:
 
-$$\text{IKM} = \text{len}(S_1) \parallel S_1 \parallel \text{len}(S_2) \parallel S_2 \parallel \dots \parallel \text{len}(S_M) \parallel S_M$$
+$$\text{IKM} = S_1 \parallel S_2 \parallel \dots \parallel S_M$$
 
-where $\text{len}(S_i)$ is a 2-byte big-endian integer representing the byte length of shared secret $S_i$.
+**Fixed-length component invariant:**
+For all currently registered CryptoFlex components, the shared-secret representation is fixed-length for a given algorithm. The combiner therefore uses direct concatenation of component shared secrets. Any future variable-length component must introduce an unambiguous canonical encoding before it can be incorporated into the combiner.
 
 ### 2.2 Info Context String (`info`)
 
@@ -143,7 +144,7 @@ Let $\mathbf{C} = ((A_1, C_1), \dots, (A_M, C_M))$ be the corresponding tuples o
 
 The combiner mapping $\mathcal{C}: (\{0,1\}^*)^M \times (\{0,1\}^* \times \{0,1\}^*)^M \to \{0,1\}^{256}$ is defined as:
 
-$$\text{IKM} = \phi(\mathbf{S}) = \bigparallel_{i=1}^M \left( \text{uint16\_be}(|S_i|) \parallel S_i \right)$$
+$$\text{IKM} = \phi(\mathbf{S}) = \bigparallel_{i=1}^M S_i$$
 
 $$\text{info} = \psi(\mathbf{C}) = \text{"cryptoflex-combiner-v1"} \parallel \bigparallel_{i=1}^M \left( \text{uint8\_be}(|A_i|) \parallel A_i \parallel \text{uint16\_be}(|C_i|) \parallel C_i \right)$$
 
