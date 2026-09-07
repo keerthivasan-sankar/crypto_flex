@@ -14,7 +14,6 @@
 | :--- | :--- | :--- |
 | `cryptography` | `>=41.0.0` | AES-256-GCM, X25519 (Classical KEM), HKDF-SHA384, Scrypt |
 | `liboqs-python` | `>=0.10.0` | Python bindings for liboqs (ML-KEM) |
-| `argon2-cffi` | `>=23.0.0` | Argon2id KDF for keystore password hashing |
 
 ## 2. Underlying Native C Libraries
 
