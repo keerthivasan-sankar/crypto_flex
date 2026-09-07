@@ -86,12 +86,34 @@ def serialize_public_bundle(bundle: PublicBundle) -> str:
 
 def deserialize_public_bundle(json_str: str) -> PublicBundle:
     """Deserialize a PublicBundle from a JSON string."""
-    data = json.loads(json_str)
-    public_keys = [
-        (item["alg_id"], base64.b64decode(item["key_b64"]))
-        for item in data["public_keys"]
-    ]
-    return PublicBundle(profile_id=data["profile_id"], public_keys=public_keys)
+    try:
+        data = json.loads(json_str)
+        if not isinstance(data, dict):
+            raise ValueError("Root object must be a JSON object")
+        
+        profile_id = data.get("profile_id")
+        if not isinstance(profile_id, str):
+            raise ValueError("Missing or invalid profile_id")
+
+        pk_list = data.get("public_keys")
+        if not isinstance(pk_list, list):
+            raise ValueError("Missing or invalid public_keys list")
+
+        public_keys = []
+        for item in pk_list:
+            if not isinstance(item, dict):
+                raise ValueError("Public key entry must be a JSON object")
+            
+            alg_id = item.get("alg_id")
+            key_b64 = item.get("key_b64")
+            if not isinstance(alg_id, str) or not isinstance(key_b64, str):
+                raise ValueError("Missing or invalid alg_id or key_b64")
+            
+            public_keys.append((alg_id, base64.b64decode(key_b64)))
+            
+        return PublicBundle(profile_id=profile_id, public_keys=public_keys)
+    except Exception as e:
+        raise DecryptionError(f"Malformed public bundle: {e}") from e
 
 
 def export_keyset_bytes(keyset: KeySet, password: str | bytes, *, use_argon2: bool = True) -> bytes:
@@ -164,15 +186,45 @@ def import_keyset_bytes(data: bytes, password: str | bytes) -> KeySet:
     profile = get_profile(payload["profile_id"])
     bundle = deserialize_public_bundle(json.dumps(payload["public_bundle"]))
 
+    private_handles_payload = payload.get("private_handles", [])
+    if not isinstance(private_handles_payload, list):
+        raise DecryptionError("invalid private_handles structure")
+
+    if len(profile.sources) != len(private_handles_payload):
+        raise DecryptionError(
+            f"structural mismatch: profile requires {len(profile.sources)} sources, "
+            f"but keystore contains {len(private_handles_payload)} private handles"
+        )
+    if len(profile.sources) != len(bundle.public_keys):
+        raise DecryptionError(
+            f"structural mismatch: profile requires {len(profile.sources)} sources, "
+            f"but public bundle contains {len(bundle.public_keys)} public keys"
+        )
+
     private_handles = []
-    for source, item in zip(profile.sources, payload["private_handles"]):
-        alg_id = item["alg_id"]
+    for source, item, (bundle_alg_id, _) in zip(profile.sources, private_handles_payload, bundle.public_keys):
+        if not isinstance(item, dict):
+            raise DecryptionError("invalid private handle entry structure")
+            
+        alg_id = item.get("alg_id")
+        if not isinstance(alg_id, str):
+            raise DecryptionError("missing or invalid alg_id in private handle")
+            
         if source.algorithm_id != alg_id:
             raise DecryptionError(
                 f"mismatched component algorithm in keystore: expected '{source.algorithm_id}', got '{alg_id}'"
             )
-        priv_bytes = base64.b64decode(item["priv_b64"])
+        if source.algorithm_id != bundle_alg_id:
+            raise DecryptionError(
+                f"mismatched component algorithm in public bundle: expected '{source.algorithm_id}', got '{bundle_alg_id}'"
+            )
+
+        priv_b64 = item.get("priv_b64")
+        if not isinstance(priv_b64, str):
+            raise DecryptionError(f"missing or invalid priv_b64 for '{alg_id}'")
+
         try:
+            priv_bytes = base64.b64decode(priv_b64)
             priv_handle = source.deserialize_private(priv_bytes)
         except Exception as e:
             raise DecryptionError(f"failed to deserialize private key for '{alg_id}': {e}") from e
