@@ -69,19 +69,43 @@ class PolicyEngine:
     def __init__(self, risk_table: Optional[dict] = None):
         self.risk_table = risk_table if risk_table is not None else _load_risk_table()
 
-    def _profile_deprecated(self, profile: SecurityProfile) -> bool:
-        """A profile is only fully deprecated if EVERY source in it is
-        deprecated - not if just one is.  This matches the actual security
-        property of a hybrid combiner: the combined key is safe as long
-        as at least one component remains sound, so a hybrid profile
-        with one deprecated component and one healthy component is still
-        usable (and still strictly better than a single-source profile
-        using only the deprecated algorithm)."""
-        algos = self.risk_table.get("algorithms", {})
-        statuses = [
-            algos.get(source.algorithm_id, {}).get("status") for source in profile.sources
-        ]
-        return len(statuses) > 0 and all(status == "deprecated" for status in statuses)
+    def _is_profile_acceptable(self, profile: SecurityProfile, require_quantum_safe: bool) -> bool:
+        """Validates that a profile is acceptable under current policy.
+        
+        Enforces a fail-closed model: any missing, unknown, or malformed
+        metadata in the risk table causes the profile to be rejected.
+        """
+        algos = self.risk_table.get("algorithms")
+        if not isinstance(algos, dict):
+            return False
+
+        statuses = []
+        is_qs = False
+        for source in profile.sources:
+            record = algos.get(source.algorithm_id)
+            if not isinstance(record, dict):
+                return False  # Missing or malformed record -> fail closed
+
+            status = record.get("status")
+            if status not in ("approved", "deprecated"):
+                return False  # Unknown or missing status -> fail closed
+            statuses.append(status)
+
+            qs_flag = record.get("quantum_safe")
+            if qs_flag is True:
+                is_qs = True
+            elif qs_flag is not False:
+                return False  # Malformed quantum_safe flag -> fail closed
+
+        if require_quantum_safe and not is_qs:
+            return False
+
+        # A profile is fully deprecated only if EVERY source is deprecated.
+        # This matches the hybrid combiner security property.
+        if all(s == "deprecated" for s in statuses):
+            return False
+
+        return True
 
     def _candidate_order(self, constraint: Constraint) -> list[str]:
         """Ordered list of profile_ids to try, best-first, for a given
@@ -113,20 +137,11 @@ class PolicyEngine:
         for i, profile_id in enumerate(candidates):
             profile = PROFILES[profile_id]
 
-            if self._profile_deprecated(profile):
-                continue
-
             if not profile.is_available():
                 continue
 
-            if require_quantum_safe:
-                algos = self.risk_table.get("algorithms", {})
-                quantum_safe = any(
-                    algos.get(s.algorithm_id, {}).get("quantum_safe")
-                    for s in profile.sources
-                )
-                if not quantum_safe:
-                    continue
+            if not self._is_profile_acceptable(profile, require_quantum_safe):
+                continue
 
             degraded = profile_id != ideal_id
             reason = (
