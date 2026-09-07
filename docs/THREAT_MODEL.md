@@ -7,18 +7,24 @@ This document formalizes the security goals, attacker models, cryptographic inva
 ## 1. Primary Security Goals & Invariants
 
 1. **Hybrid Combiner Design Goal**:
+
    - The construction is intended to derive a root key from both component secrets so that compromise of one component does not by itself expose the other component's contribution. This is a design goal, not a formally proven security guarantee.
-   - These statements describe the intended threat scenarios, not a proof that the combined construction retains the security of either component.
+
+   - The following describe intended threat scenarios, not a proof that the combined construction retains the security of either component.
+
    - In the intended threat scenario, a sufficiently capable quantum computer breaks X25519, while ML-KEM is intended to provide the post-quantum component.
+
    - Conversely, if ML-KEM were compromised, X25519 is intended to provide the classical component.
+
 2. **Payload & Header Authenticated Encryption**:
+
    - The entire serialized header (version, profile ID, algorithm identifiers, KEM ciphertexts, AEAD nonce) is authenticated via AES-256-GCM Associated Data (AAD).
-   - Any active tampering with algorithm tags or headers causes immediate decryption rejection prior to payload processing.
-3. **Forward Secrecy for Messaging**:
-   - `ephemeral_encrypt()` produces short-lived KEM ciphertexts per message. Compromising long-term keys later does not decrypt past ephemeral transcripts.
-4. **Uniform Failure Surface (No Error Oracles)**:
-   - All cryptographic failure paths (invalid key, malformed header, tampered ciphertext, bad AEAD tag) collapse into a uniform `DecryptionError`.
-   - Decapsulation handling normalizes externally visible failures. CryptoFlex does not claim constant-time behavior or complete timing-side-channel resistance at the Python layer.
+
+   - Any active tampering with algorithm tags or headers causes decryption rejection before payload processing.
+
+3. **Local Machine Compromise**:
+
+   - If an attacker has `root` / administrator access to the machine while `cryptoflex` is running, they may be able to read process memory directly through OS debugging or memory-access interfaces.
 
 ---
 
