@@ -8,7 +8,7 @@ version = "0.5.2"
 description = "A local-first crypto-agility policy engine: orchestrates classical + post-quantum primitives behind a decision layer, with zero network dependency."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
 authors = [{ name = "Keerthivasan Sankar (Rambo)" }]
 dependencies = [
     "cryptography>=42.0.0,<45.0.0",

@@ -15,6 +15,18 @@ Password handling (in order of precedence):
   1. CRYPTOFLEX_PASSWORD environment variable
   2. --password flag (WARNING: visible in process list on shared systems)
   3. Interactive getpass prompt (safest, used when neither above is set)
+
+Atomic output semantics:
+  All file-writing operations (encrypt, decrypt, migrate, keygen) use
+  temporary files in the destination directory followed by atomic rename.
+  If the operation fails at any point, the original destination file is
+  preserved unchanged and the temporary file is removed.
+
+Path alias protection:
+  input and output paths that resolve to the same file are rejected.
+  This is a protection against detected same-file collisions; it does not
+  claim to detect all possible filesystem alias conditions (e.g. bind mounts,
+  complex symlink chains).
 """
 
 from __future__ import annotations
@@ -22,10 +34,13 @@ from __future__ import annotations
 import argparse
 import getpass
 import os
+import stat
 import sys
+import tempfile
 from pathlib import Path
 
-from .api import decrypt, encrypt, establish_keys, migrate_file
+from .api import decrypt, encrypt, establish_keys
+from .errors import DecryptionError
 from .header import CryptoflexHeader
 from .keystore import (
     deserialize_public_bundle,
@@ -34,9 +49,7 @@ from .keystore import (
     serialize_public_bundle,
 )
 from .policy import Constraint
-from .streaming import decrypt_stream, encrypt_stream
-
-
+from .streaming import decrypt_stream, encrypt_stream, migrate_stream
 
 
 def _resolve_password(parsed_password: str | None, prompt: str) -> str:
@@ -55,9 +68,82 @@ def _resolve_password(parsed_password: str | None, prompt: str) -> str:
 
 
 def _check_path_alias(input_path: str, output_path: str) -> None:
-    """Ensure input and output paths do not resolve to the same file."""
-    if Path(input_path).resolve() == Path(output_path).resolve():
-        raise ValueError(f"input and output paths resolve to the same file: '{input_path}'")
+    """Ensure input and output paths do not resolve to the same file.
+
+    NOTE: This check compares resolved paths to catch the common case of
+    same-file aliases. It does not claim to detect all possible filesystem
+    aliasing conditions (bind mounts, complex symlink chains, etc.).
+    """
+    try:
+        if Path(input_path).resolve() == Path(output_path).resolve():
+            raise ValueError(f"input and output paths resolve to the same file: '{input_path}'")
+    except (OSError, ValueError):
+        raise
+
+
+def _make_temp_in_dir(dest_path: str) -> tuple[int, str]:
+    """Create a secure temporary file in the same directory as dest_path.
+
+    Returns (fd, temp_path). The caller is responsible for closing fd and
+    removing temp_path on failure, or replacing dest_path on success.
+
+    Creating the temp file in the same directory as the destination ensures
+    os.replace() is atomic (same filesystem).
+    """
+    dest_dir = os.path.dirname(os.path.abspath(dest_path))
+    fd, temp_path = tempfile.mkstemp(dir=dest_dir, prefix=".cryptoflex_tmp_")
+    # Restrict permissions immediately on POSIX; no-op on Windows
+    try:
+        os.chmod(temp_path, stat.S_IRUSR | stat.S_IWUSR)
+    except (OSError, AttributeError):
+        pass
+    return fd, temp_path
+
+
+def _atomic_write_bytes(dest_path: str, data: bytes) -> None:
+    """Write data atomically to dest_path using a temp file + rename."""
+    fd, temp_path = _make_temp_in_dir(dest_path)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except (OSError, AttributeError):
+                pass
+        os.replace(temp_path, dest_path)
+    except Exception:
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
+        raise
+
+
+def _atomic_stream_write(dest_path: str, write_fn) -> None:
+    """Write a file atomically using streaming: write_fn(file_obj) -> None.
+
+    write_fn receives an open binary-writable file object. After write_fn
+    returns successfully, the temp file is fsynced and renamed into place.
+    If write_fn raises, the temp file is removed and the exception is
+    propagated; the original destination is preserved.
+    """
+    fd, temp_path = _make_temp_in_dir(dest_path)
+    try:
+        with os.fdopen(fd, "wb") as fout:
+            write_fn(fout)
+            fout.flush()
+            try:
+                os.fsync(fout.fileno())
+            except (OSError, AttributeError):
+                pass
+        os.replace(temp_path, dest_path)
+    except Exception:
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
+        raise
 
 
 def main(args: list[str] | None = None) -> int:
@@ -111,7 +197,6 @@ def main(args: list[str] | None = None) -> int:
     p_mig.add_argument("--min-profile", help="Minimum required profile ID for existing ciphertext")
     p_mig.add_argument("--stream", action="store_true", help="Use chunked streaming mode for large files")
 
-
     # --- INFO ---
     p_info = subparsers.add_parser("info", help="Inspect metadata from a .cflx encrypted file header")
     p_info.add_argument("file", help="Path to .cflx file")
@@ -124,14 +209,36 @@ def main(args: list[str] | None = None) -> int:
             constraint = Constraint(parsed.constraint)
             keyset = establish_keys(constraint=constraint)
 
+            # Build both artifacts in memory first
             bundle_json = serialize_public_bundle(keyset.public_bundle)
-            with open(parsed.bundle, "w", encoding="utf-8") as f:
-                f.write(bundle_json)
-
             use_argon2 = parsed.kdf == "argon2id"
             keyset_bytes = export_keyset_bytes(keyset, password, use_argon2=use_argon2)
-            with open(parsed.key, "wb") as f:
-                f.write(keyset_bytes)
+
+            # Write bundle file atomically first (public, non-secret)
+            _atomic_write_bytes(parsed.bundle, bundle_json.encode("utf-8"))
+
+            # Write encrypted key file atomically, with restrictive permissions
+            fd, temp_key_path = _make_temp_in_dir(parsed.key)
+            try:
+                with os.fdopen(fd, "wb") as f:
+                    f.write(keyset_bytes)
+                    f.flush()
+                    try:
+                        os.fsync(f.fileno())
+                    except (OSError, AttributeError):
+                        pass
+                os.replace(temp_key_path, parsed.key)
+                # Set restrictive permissions on the final key file
+                try:
+                    os.chmod(parsed.key, stat.S_IRUSR | stat.S_IWUSR)
+                except (OSError, AttributeError):
+                    pass
+            except Exception:
+                try:
+                    os.unlink(temp_key_path)
+                except OSError:
+                    pass
+                raise
 
             print(f"Keypair generated under profile '{keyset.profile.profile_id}' (KDF: {parsed.kdf}).")
             print(f"  Public bundle saved to: {parsed.bundle}")
@@ -144,14 +251,17 @@ def main(args: list[str] | None = None) -> int:
                 bundle = deserialize_public_bundle(f.read())
 
             if parsed.stream:
-                with open(parsed.input_path, "rb") as fin, open(parsed.output_path, "wb") as fout:
-                    encrypt_stream(bundle, fin, fout)
+                with open(parsed.input_path, "rb") as fin:
+                    _atomic_stream_write(
+                        parsed.output_path,
+                        lambda fout: encrypt_stream(bundle, fin, fout),
+                    )
             else:
                 with open(parsed.input_path, "rb") as fin:
                     plaintext = fin.read()
                 blob = encrypt(bundle, plaintext)
-                with open(parsed.output_path, "wb") as fout:
-                    fout.write(blob)
+                del plaintext
+                _atomic_write_bytes(parsed.output_path, blob)
 
             print(f"Successfully encrypted '{parsed.input_path}' -> '{parsed.output_path}'")
             return 0
@@ -164,14 +274,19 @@ def main(args: list[str] | None = None) -> int:
             keyset = import_keyset_bytes(key_bytes, password)
 
             if parsed.stream:
-                with open(parsed.input_path, "rb") as fin, open(parsed.output_path, "wb") as fout:
-                    decrypt_stream(keyset.private_handles, fin, fout, min_profile=parsed.min_profile)
+                with open(parsed.input_path, "rb") as fin:
+                    _atomic_stream_write(
+                        parsed.output_path,
+                        lambda fout: decrypt_stream(
+                            keyset.private_handles, fin, fout, min_profile=parsed.min_profile
+                        ),
+                    )
             else:
                 with open(parsed.input_path, "rb") as fin:
                     blob = fin.read()
                 plaintext = decrypt(keyset.private_handles, blob, min_profile=parsed.min_profile)
-                with open(parsed.output_path, "wb") as fout:
-                    fout.write(plaintext)
+                _atomic_write_bytes(parsed.output_path, plaintext)
+                del plaintext
 
             print(f"Successfully decrypted '{parsed.input_path}' -> '{parsed.output_path}'")
             return 0
@@ -186,18 +301,35 @@ def main(args: list[str] | None = None) -> int:
             with open(parsed.new_bundle, "r", encoding="utf-8") as f:
                 new_bundle = deserialize_public_bundle(f.read())
 
-            migrate_file(
-                keyset.private_handles,
-                parsed.input_path,
-                parsed.output_path,
-                new_bundle,
-                min_profile=parsed.min_profile,
-                stream=parsed.stream,
+            if parsed.stream:
+                with open(parsed.input_path, "rb") as fin:
+                    _atomic_stream_write(
+                        parsed.output_path,
+                        lambda fout: migrate_stream(
+                            keyset.private_handles,
+                            fin,
+                            fout,
+                            new_bundle,
+                            min_profile=parsed.min_profile,
+                        ),
+                    )
+            else:
+                with open(parsed.input_path, "rb") as fin:
+                    blob = fin.read()
+                from .api import migrate
+                migrated = migrate(
+                    keyset.private_handles,
+                    blob,
+                    new_bundle,
+                    min_profile=parsed.min_profile,
+                )
+                _atomic_write_bytes(parsed.output_path, migrated)
+
+            print(
+                f"Successfully migrated '{parsed.input_path}' to target bundle"
+                f" profile '{new_bundle.profile_id}' -> '{parsed.output_path}'"
             )
-
-            print(f"Successfully migrated '{parsed.input_path}' to target bundle profile '{new_bundle.profile_id}' -> '{parsed.output_path}'")
             return 0
-
 
         elif parsed.command == "info":
             with open(parsed.file, "rb") as f:
@@ -219,6 +351,10 @@ def main(args: list[str] | None = None) -> int:
             print("==================================================")
             return 0
 
+    except DecryptionError as e:
+        # Normalize decryption failures without leaking internal detail
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

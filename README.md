@@ -3,7 +3,7 @@
 [![tests](https://github.com/keerthivasan-sankar/crypto_flex/actions/workflows/tests.yml/badge.svg)](https://github.com/keerthivasan-sankar/crypto_flex/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
-Development version: 0.5.2 (unreleased)
+Development version: 0.5.2
 
 A local-first crypto-agility policy engine for Python.
 
@@ -177,7 +177,7 @@ For complete technical details, see:
 
 ## Testing
 
-104 tests covering unit, integration, adversarial, property-based (Hypothesis), and migration cases.
+126 tests covering unit, integration, adversarial, property-based (Hypothesis), and migration cases.
 
 
 ```bash

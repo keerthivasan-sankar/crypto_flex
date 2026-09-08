@@ -120,7 +120,7 @@ class CryptoflexHeader:
             return CryptoflexHeader._parse(data)
         except HeaderParseError:
             raise
-        except (IndexError, struct.error, UnicodeDecodeError) as e:
+        except (IndexError, struct.error, UnicodeDecodeError, ValueError) as e:
             raise HeaderParseError(
                 f"malformed or truncated cryptoflex header: {e}"
             ) from e
@@ -148,12 +148,21 @@ class CryptoflexHeader:
         profile_id = data[offset : offset + profile_id_len].decode("utf-8")
         offset += profile_id_len
 
+        # Semantic: profile_id must be non-empty
+        if not profile_id:
+            raise HeaderParseError("empty profile_id in header")
+
         if offset >= len(data):
             raise HeaderParseError("truncated header: missing num_components")
         num_components = data[offset]
         offset += 1
 
+        # Semantic: at least one component is required
+        if num_components == 0:
+            raise HeaderParseError("header contains zero components; at least one is required")
+
         components: list[tuple[str, bytes]] = []
+        seen_alg_ids: set[str] = set()
         for _ in range(num_components):
             if offset >= len(data):
                 raise HeaderParseError("truncated algorithm_id length field")
@@ -163,6 +172,15 @@ class CryptoflexHeader:
                 raise HeaderParseError("truncated algorithm_id field")
             alg_id = data[offset : offset + alg_len].decode("utf-8")
             offset += alg_len
+
+            # Semantic: algorithm ID must be non-empty
+            if not alg_id:
+                raise HeaderParseError("empty algorithm_id in header component")
+
+            # Semantic: duplicate algorithm IDs are rejected
+            if alg_id in seen_alg_ids:
+                raise HeaderParseError(f"duplicate algorithm_id '{alg_id}' in header")
+            seen_alg_ids.add(alg_id)
 
             if offset + 2 > len(data):
                 raise HeaderParseError("truncated ciphertext length field")

@@ -11,14 +11,22 @@ The intended design goal is that compromise of one component does not by
 itself reveal the combined key when another component remains secure.
 This has not been independently proven for the CryptoFlex construction.
 
-Combiner specification
------------------------
-This implementation targets the IND-CCA KEM combiner property described
-in draft-ounsworth-cfrg-kem-combiners (IETF CFRG) and follows the
-general hybrid key exchange shape used by:
-  - RFC 9954 (formerly draft-ietf-tls-hybrid-design)
-  - Signal's PQXDH
-  - Chrome/BoringSSL hybrid TLS key exchange
+No independent formal security proof exists for the complete CryptoFlex
+composition.  The construction is a CryptoFlex-specific implementation
+and must not be confused with any formally standardized protocol.
+
+Combiner design
+-----------------
+This implementation is a CryptoFlex-specific construction inspired by
+and motivated by hybrid KEM combiner literature and standards discussions,
+including draft-ounsworth-cfrg-kem-combiners (IETF CFRG) and the general
+hybrid key exchange shape explored in RFC 9954 (hybrid TLS design) and
+related work.
+
+CryptoFlex does NOT implement those standards.  It does NOT inherit any
+formal security proof from those documents.  Analogous design goals have
+been pursued, but the CryptoFlex combiner is a distinct implementation
+that has not been independently cryptanalyzed.
 
 The construction concatenates ALL shared secrets as HKDF input key
 material and binds ALL ciphertexts, algorithm identifiers, and a

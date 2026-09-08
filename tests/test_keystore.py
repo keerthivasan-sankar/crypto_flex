@@ -160,3 +160,67 @@ def test_import_rejects_garbage_base64_private_handle():
     
     with pytest.raises(DecryptionError, match="failed to deserialize private key"):
         import_keyset_bytes(blob, "pass")
+
+
+# ============================================================================
+# Keystore hardening tests
+# ============================================================================
+
+def test_keystore_rejects_empty_password_str():
+    """An empty string password must be rejected before KDF runs."""
+    engine = PolicyEngine()
+    keyset = establish_keys(engine, constraint=Constraint.FAST)
+    with pytest.raises(ValueError, match="must not be empty"):
+        export_keyset_bytes(keyset, "")
+
+
+def test_keystore_rejects_empty_password_bytes():
+    """An empty bytes password must be rejected before KDF runs."""
+    engine = PolicyEngine()
+    keyset = establish_keys(engine, constraint=Constraint.FAST)
+    with pytest.raises(ValueError, match="must not be empty"):
+        export_keyset_bytes(keyset, b"")
+
+
+def test_keystore_rejects_oversized_input():
+    """An import blob exceeding MAX_KEYSTORE_SIZE must be rejected before any KDF attempt."""
+    from cryptoflex.keystore import MAX_KEYSTORE_SIZE
+    big_blob = b"CFLA" + b"\\x00" * (MAX_KEYSTORE_SIZE + 1)
+    with pytest.raises(DecryptionError, match="exceeds maximum"):
+        import_keyset_bytes(big_blob, "anypassword")
+
+
+def test_keystore_rejects_profile_id_mismatch():
+    """A keystore whose internal profile_id differs from its public_bundle profile_id must fail."""
+    import json
+    import os
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    from cryptoflex.keystore import (
+        MAGIC_KEYSTORE_ARGON2, SALT_LEN, NONCE_LEN,
+        _derive_wrapping_key,
+    )
+
+    # Construct a keystore where profile_id says 'classical_only' but
+    # public_bundle says 'hybrid_standard' — cross-binding should catch this.
+    payload = {
+        "profile_id": "classical_only",
+        "public_bundle": {
+            "profile_id": "hybrid_standard",  # mismatch
+            "public_keys": [
+                {"alg_id": "x25519", "key_b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="},
+            ]
+        },
+        "private_handles": [
+            {"alg_id": "x25519", "priv_b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="}
+        ]
+    }
+    plaintext = json.dumps(payload).encode("utf-8")
+    salt = os.urandom(SALT_LEN)
+    nonce = os.urandom(NONCE_LEN)
+    wrapping_key = _derive_wrapping_key("pass", salt, "argon2id")
+    aesgcm = AESGCM(wrapping_key)
+    ct = aesgcm.encrypt(nonce, plaintext, MAGIC_KEYSTORE_ARGON2)
+    blob = MAGIC_KEYSTORE_ARGON2 + salt + nonce + ct
+
+    with pytest.raises(DecryptionError):
+        import_keyset_bytes(blob, "pass")

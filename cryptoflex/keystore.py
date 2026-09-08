@@ -41,15 +41,32 @@ SALT_LEN = 16
 NONCE_LEN = 12
 KEY_LEN = 32
 
-# Cap concurrent memory-hard KDF derivations to 2 to prevent RAM exhaustion DoS
+# Maximum keystore blob size accepted before any allocation or KDF attempt.
+# Prevents attacker-controlled large inputs from exhausting RAM before rejection.
+MAX_KEYSTORE_SIZE = 16 * 1024 * 1024  # 16 MB
+
+# Cap concurrent memory-hard KDF derivations to 2 to prevent RAM exhaustion DoS.
+# Semaphore acquire uses a timeout to prevent indefinite thread blocking.
 _KDF_SEMAPHORE = threading.Semaphore(2)
+_KDF_SEMAPHORE_TIMEOUT = 30.0  # seconds
 
 
 def _derive_wrapping_key(password: str | bytes, salt: bytes, kdf_type: str = "argon2id") -> bytes:
     if isinstance(password, str):
         password = password.encode("utf-8")
 
-    with _KDF_SEMAPHORE:
+    # Reject empty passwords at the library boundary. A zero-length password
+    # would silently produce a valid KDF output and weaken the security boundary.
+    if not password:
+        raise ValueError("keystore password must not be empty")
+
+    acquired = _KDF_SEMAPHORE.acquire(timeout=_KDF_SEMAPHORE_TIMEOUT)
+    if not acquired:
+        raise RuntimeError(
+            "KDF concurrency limit reached: too many simultaneous key-derivation "
+            "operations. Try again shortly."
+        )
+    try:
         if kdf_type == "argon2id":
             kdf = Argon2id(
                 salt=salt,
@@ -70,6 +87,8 @@ def _derive_wrapping_key(password: str | bytes, salt: bytes, kdf_type: str = "ar
             return kdf.derive(password)
         else:
             raise ValueError(f"unsupported KDF type: '{kdf_type}'")
+    finally:
+        _KDF_SEMAPHORE.release()
 
 
 def serialize_public_bundle(bundle: PublicBundle) -> str:
@@ -165,6 +184,11 @@ def import_keyset_bytes(data: bytes, password: str | bytes) -> KeySet:
 
     Supports both Argon2id (`CFLA`) and Scrypt (`CFLK`) keystores.
     """
+    # Size limit: reject oversized blobs before any allocation or KDF attempt.
+    if len(data) > MAX_KEYSTORE_SIZE:
+        raise DecryptionError(
+            f"keystore exceeds maximum accepted size ({MAX_KEYSTORE_SIZE} bytes)"
+        )
     if len(data) < 4 + SALT_LEN + NONCE_LEN:
         raise DecryptionError("invalid or corrupted keystore format")
 
@@ -190,10 +214,27 @@ def import_keyset_bytes(data: bytes, password: str | bytes) -> KeySet:
         raise DecryptionError("invalid password or corrupted keystore") from e
 
     try:
-        profile = get_profile(payload["profile_id"])
-    except ValueError as e:
+        keystore_profile_id = payload["profile_id"]
+        if not isinstance(keystore_profile_id, str) or not keystore_profile_id:
+            raise DecryptionError("invalid or missing profile_id in keystore")
+        profile = get_profile(keystore_profile_id)
+    except (ValueError, KeyError) as e:
         raise DecryptionError(f"unrecognized profile: {e}") from e
     bundle = deserialize_public_bundle(json.dumps(payload["public_bundle"]))
+
+    # Cross-binding: keystore profile_id, public_bundle profile_id, and
+    # registered SecurityProfile must all agree. A mismatch indicates a
+    # corrupt or mismatched keystore/bundle pair.
+    if bundle.profile_id != keystore_profile_id:
+        raise DecryptionError(
+            "keystore profile_id does not match public_bundle profile_id: "
+            f"'{keystore_profile_id}' vs '{bundle.profile_id}'"
+        )
+    if profile.profile_id != keystore_profile_id:
+        raise DecryptionError(
+            "registered profile_id does not match keystore profile_id: "
+            f"'{profile.profile_id}' vs '{keystore_profile_id}'"
+        )
 
     private_handles_payload = payload.get("private_handles", [])
     if not isinstance(private_handles_payload, list):
