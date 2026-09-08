@@ -62,6 +62,9 @@ class CryptoflexHeader:
     version: int = FORMAT_VERSION        # header format version
 
     def to_bytes(self) -> bytes:
+        if self.version != FORMAT_VERSION:
+            raise ValueError(f"cannot serialize unsupported header version {self.version}; this library only produces version {FORMAT_VERSION}")
+
         out = bytearray()
         out += MAGIC
         out += struct.pack("B", self.version)

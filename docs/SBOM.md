@@ -1,7 +1,7 @@
 # Software Bill of Materials (SBOM)
 
 **Project:** `cryptoflex`
-**Version:** 0.5.1-dev
+**Version:** 0.5.2
 **Date:** September 2026
 
 > [!NOTE]
@@ -13,7 +13,7 @@
 | Package | Version Range | Purpose |
 | :--- | :--- | :--- |
 | `cryptography` | `>=42.0.0,<45.0.0` | AES-256-GCM, X25519 (Classical KEM), HKDF-SHA384, Scrypt |
-| `liboqs-python` | `>=0.10.0,<1.0.0` | Python bindings for liboqs (ML-KEM) |
+| `liboqs-python` | `>=0.16.0,<0.17.0` | Python bindings for liboqs (ML-KEM) |
 
 ## 2. Underlying Native C Libraries
 

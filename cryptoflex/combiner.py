@@ -31,8 +31,8 @@ The previous implementation used ``b"|".join(...)`` which is AMBIGUOUS:
 if any ciphertext or algorithm ID contains the ``|`` byte, field
 boundaries are lost and an attacker can move bytes between adjacent
 fields.  The new encoding length-prefixes every variable-length field
-with a 4-byte big-endian length, making the encoding injective (two
-distinct inputs can never produce the same encoded byte string).
+with a 4-byte big-endian length, making the encoding unambiguous (two
+distinct info structures can never produce the same encoded byte string).
 
 We do NOT invent our own combiner math beyond assembling the standard
 HKDF construction - the combiner logic here is orchestration around
@@ -80,8 +80,8 @@ def _encode_info(
             4 bytes   len(ciphertext)   ciphertext length
             N bytes   ciphertext        raw ciphertext bytes
 
-    This encoding is injective: two distinct input tuples can never
-    produce the same byte string, so the HKDF output is
+    This encoding is unambiguous: the 4-byte length prefixes prevent
+    concatenation boundaries from shifting. The HKDF output is
     cryptographically bound to the exact combination of inputs.
     """
     out = bytearray()

@@ -130,3 +130,19 @@ def test_cli_migrate_streaming_workflow(tmp_path):
     with open(dec_file, "rb") as f:
         assert f.read() == content
 
+
+def test_cli_rejects_same_input_output_paths(tmp_path):
+    bundle_file = str(tmp_path / "test_bundle.json")
+    input_file = str(tmp_path / "input.txt")
+    
+    with open(input_file, "wb") as f:
+        f.write(b"Data")
+        
+    ret = main(["encrypt", "--in", input_file, "--out", input_file, "--bundle", bundle_file])
+    assert ret == 1
+    
+    # Also check via relative path resolution
+    rel_in = os.path.relpath(input_file, os.getcwd())
+    ret = main(["encrypt", "--in", rel_in, "--out", input_file, "--bundle", bundle_file])
+    assert ret == 1
+

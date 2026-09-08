@@ -2,7 +2,7 @@
 cryptoflex.cli
 ===============
 
-Command Line Interface for cryptoflex v0.4.0.
+Command Line Interface for cryptoflex v0.5.2.
 
 Usage:
   cryptoflex keygen --key key.cflk --bundle bundle.json [--password PASS] [--kdf {argon2id,scrypt}]
@@ -23,6 +23,7 @@ import argparse
 import getpass
 import os
 import sys
+from pathlib import Path
 
 from .api import decrypt, encrypt, establish_keys, migrate_file
 from .header import CryptoflexHeader
@@ -51,6 +52,12 @@ def _resolve_password(parsed_password: str | None, prompt: str) -> str:
         )
         return parsed_password
     return getpass.getpass(prompt)
+
+
+def _check_path_alias(input_path: str, output_path: str) -> None:
+    """Ensure input and output paths do not resolve to the same file."""
+    if Path(input_path).resolve() == Path(output_path).resolve():
+        raise ValueError(f"input and output paths resolve to the same file: '{input_path}'")
 
 
 def main(args: list[str] | None = None) -> int:
@@ -132,6 +139,7 @@ def main(args: list[str] | None = None) -> int:
             return 0
 
         elif parsed.command == "encrypt":
+            _check_path_alias(parsed.input_path, parsed.output_path)
             with open(parsed.bundle, "r", encoding="utf-8") as f:
                 bundle = deserialize_public_bundle(f.read())
 
@@ -149,6 +157,7 @@ def main(args: list[str] | None = None) -> int:
             return 0
 
         elif parsed.command == "decrypt":
+            _check_path_alias(parsed.input_path, parsed.output_path)
             password = _resolve_password(parsed.password, "Enter keyset password: ")
             with open(parsed.key, "rb") as f:
                 key_bytes = f.read()
@@ -168,6 +177,7 @@ def main(args: list[str] | None = None) -> int:
             return 0
 
         elif parsed.command == "migrate":
+            _check_path_alias(parsed.input_path, parsed.output_path)
             password = _resolve_password(parsed.password, "Enter keyset password: ")
             with open(parsed.key, "rb") as f:
                 key_bytes = f.read()

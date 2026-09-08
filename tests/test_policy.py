@@ -75,3 +75,51 @@ def test_all_profiles_deprecated_raises_hard_stop():
     engine = PolicyEngine(risk_table=risk_table)
     with pytest.raises(RuntimeError):
         engine.decide(Constraint.BALANCED)
+
+
+def test_policy_rejects_disallowed_status():
+    risk_table = {"algorithms": {"x25519": {"status": "disallowed", "quantum_safe": False}}}
+    engine = PolicyEngine(risk_table=risk_table)
+    acceptable, _, _ = engine._is_profile_acceptable(PROFILES["classical_only"], False)
+    assert not acceptable
+
+
+def test_policy_rejects_unknown_status():
+    risk_table = {"algorithms": {"x25519": {"status": "what_is_this", "quantum_safe": False}}}
+    engine = PolicyEngine(risk_table=risk_table)
+    acceptable, _, _ = engine._is_profile_acceptable(PROFILES["classical_only"], False)
+    assert not acceptable
+
+
+def test_policy_rejects_missing_status():
+    risk_table = {"algorithms": {"x25519": {"quantum_safe": False}}}
+    engine = PolicyEngine(risk_table=risk_table)
+    acceptable, _, _ = engine._is_profile_acceptable(PROFILES["classical_only"], False)
+    assert not acceptable
+
+
+def test_policy_mixed_approved_deprecated_is_degraded():
+    risk_table = {
+        "algorithms": {
+            "x25519": {"status": "deprecated", "quantum_safe": False},
+            "mlkem768": {"status": "approved", "quantum_safe": True},
+        }
+    }
+    engine = PolicyEngine(risk_table=risk_table)
+    acceptable, degraded, reason = engine._is_profile_acceptable(PROFILES["hybrid_standard"], False)
+    assert acceptable is True
+    assert degraded is True
+    assert "deprecated component(s): x25519" in reason
+
+
+def test_policy_all_deprecated_is_rejected_in_check():
+    risk_table = {
+        "algorithms": {
+            "x25519": {"status": "deprecated", "quantum_safe": False},
+            "mlkem768": {"status": "deprecated", "quantum_safe": True},
+        }
+    }
+    engine = PolicyEngine(risk_table=risk_table)
+    acceptable, _, _ = engine._is_profile_acceptable(PROFILES["hybrid_standard"], False)
+    assert not acceptable
+

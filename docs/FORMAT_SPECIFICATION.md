@@ -1,4 +1,4 @@
-# cryptoflex Format & Cryptographic Specification (v0.5.0)
+# cryptoflex Format & Cryptographic Specification (v0.5.2)
 
 This document provides a formal technical specification of the data formats, key derivation mechanisms, and framing rules implemented by `cryptoflex`.
 
@@ -84,27 +84,77 @@ where:
 
 ## 4. Streaming Framing Specification
 
-For files exceeding RAM capacity, `encrypt_stream()` processes payloads in sequential chunks.
+For files exceeding RAM capacity, `encrypt_stream()` processes payloads in sequential authenticated frames.
 
 ### Stream Structure Layout
 
 | Sequence Block | Field Name | Type / Length | Description |
 | :--- | :--- | :--- | :--- |
 | **Preamble** | **Stream Header** | Variable | Full v2 `CryptoflexHeader` (Section 1) containing `BaseNonce` |
-| **Chunk $i$ ($i = 0, 1, \dots$)** | **Chunk Payload Length** | 4 bytes (`uint32`, Big-Endian) | Byte length $C$ of chunk AEAD payload (ciphertext + 16B tag) |
-| | **AEAD Payload** | $C$ bytes (`bytes`) | AES-256-GCM encrypted chunk ciphertext + 16-byte tag |
-| **Terminal Marker** | **Stream End Indicator** | 4 bytes (`uint32`) | `0x00000000` (length 0 signals clean end-of-stream) |
+| **Frame $i$** | **Frame Type** | 1 byte (`uint8`) | `0x01` = DATA, `0x02` = FINAL |
+| | **Ciphertext Length** | 4 bytes (`uint32`, Big-Endian) | Byte length $C$ of AEAD payload (ciphertext + 16B tag) |
+| | **AEAD Payload** | $C$ bytes (`bytes`) | AES-256-GCM encrypted ciphertext + 16-byte tag |
 
-### 4.1 Per-Chunk Framing Logic
+### 4.1 Frame Types
 
-For each chunk $i$:
-1. **Chunk Payload Length (4 bytes, uint32)**: Big-endian integer. Default chunk size is 64 KB (65,536 bytes of plaintext).
-2. **Per-Chunk Nonce (12 bytes)**:
-   $$\text{Nonce}_i = \text{BaseNonce}[0..7] \parallel \text{uint32\_be}(i)$$
-3. **Per-Chunk AAD**:
-   $$\text{AAD}_i = \text{HeaderBytes} \parallel \text{uint32\_be}(i)$$
+**DATA frame** (`0x01`): Carries an encrypted plaintext chunk.
+- Plaintext size: `1` to `MAX_CHUNK_PLAINTEXT_SIZE` (9 MB) bytes.
+- Ciphertext size: plaintext size + 16 bytes (GCM tag).
 
-Binding the sequence counter $i$ into both the nonce and AAD guarantees that chunk reordering, deletion, insertion, or swapping across streams is detected.
+**FINAL frame** (`0x02`): Mandatory stream terminator.
+- Plaintext: empty (`b""`).
+- Ciphertext: exactly 16 bytes (GCM tag over empty plaintext).
+- Must be the last frame. Any data after FINAL is rejected.
+
+### 4.2 Sequence Numbering
+
+Frames are numbered sequentially starting from 0:
+
+```
+DATA   0
+DATA   1
+...
+DATA   N
+FINAL  N+1
+```
+
+The sequence counter is bound into both the nonce and AAD of every frame.
+
+### 4.3 Per-Frame Nonce Derivation
+
+For each frame $i$:
+$$\text{Nonce}_i = \text{BaseNonce}[0..7] \parallel \text{uint32\_be}(i)$$
+
+### 4.4 Per-Frame AAD Construction
+
+For DATA frames:
+$$\text{AAD}_i = \text{HeaderBytes} \parallel \text{uint32\_be}(i) \parallel \text{b"DATA"}$$
+
+For the FINAL frame:
+$$\text{AAD}_i = \text{HeaderBytes} \parallel \text{uint32\_be}(i) \parallel \text{b"FINAL"}$$
+
+Binding the frame type tag into the AAD ensures that a DATA frame cannot be reinterpreted as a FINAL frame, and vice versa.
+
+### 4.5 Maximum Frame Size
+
+Maximum plaintext chunk size: 9 MB (`9 * 1024 * 1024` bytes).  
+Maximum ciphertext frame size: 9 MB + 16 bytes.  
+Default chunk size: 64 KB (`64 * 1024` bytes).
+
+### 4.6 EOF and Stream Integrity
+
+Successful decryption requires receiving and authenticating a FINAL frame. The following are all rejected:
+- Missing FINAL frame (stream truncation)
+- Forged FINAL frame (wrong GCM tag)
+- Wrong sequence number on FINAL frame
+- DATA frames after FINAL
+- Trailing bytes after FINAL
+- Invalid frame type bytes
+- Legacy unauthenticated `0x00000000` terminal markers
+
+### 4.7 Legacy Stream Behavior
+
+Streams produced by CryptoFlex versions prior to v0.5.2 used an unauthenticated `0x00000000` 4-byte terminal marker. These streams are **not accepted** by the current decoder. They must be re-encrypted using the current version to gain authenticated stream termination.
 
 ---
 
@@ -163,11 +213,12 @@ If $S_k$ provides sufficient min-entropy given $C_k$, the concatenated string $\
 
 ### 6.3 Design Rationale: Injectivity of Pre-fixed Formatting (RFC 9954)
 
-> **Design Rationale (Injectivity)**:  
-> The encoding functions $\phi(\mathbf{S})$ and $\psi(\mathbf{C})$ are designed to be strictly **injective**.
+> **Design Rationale (Unambiguous Encoding)**:  
+> Current fixed-length shared-secret vectors are unambiguous under direct concatenation.
+> Future variable-length secrets require explicit length encoding before incorporation into the combiner.
 
 *Rationale*:  
-Each element in $\phi$ and $\psi$ is prefixed by its exact byte length ($\text{uint16\_be}$ or $\text{uint8\_be}$). Parsing proceeds deterministically from left to right without ambiguity. No element boundaries can shift, which is intended to prevent cross-component length-extension attacks or concatenation collisions.
+The info encoding function $\psi(\mathbf{C})$ uses 4-byte big-endian length prefixes for each variable-length field, making it injective (two distinct input tuples cannot produce the same byte string). The IKM encoding $\phi(\mathbf{S})$ relies on the fact that all currently registered CryptoFlex components produce fixed-length shared secrets for a given algorithm, making direct concatenation unambiguous for those components. This should not be interpreted as a general injectivity claim for arbitrary variable-length inputs.
 
 ### 6.4 Design Rationale: AEAD Header Binding & Non-Malleability
 

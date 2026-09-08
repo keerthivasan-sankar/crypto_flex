@@ -35,12 +35,18 @@ def test_header_round_trip_multi_component():
 
 def test_v1_header_backwards_compatible_parsing():
     """Verify v1 format bytes parse cleanly with nonce=None and version=1."""
-    v1_header = CryptoflexHeader(
-        profile_id="classical_only",
-        components=[("x25519", b"\x00" * 32)],
-        version=1,
+    import struct
+    data = (
+        b"CFLX" +
+        b"\x01" +
+        struct.pack("B", len("classical_only")) +
+        b"classical_only" +
+        b"\x01" +
+        struct.pack("B", len("x25519")) +
+        b"x25519" +
+        struct.pack(">H", 32) +
+        (b"\x00" * 32)
     )
-    data = v1_header.to_bytes()
     parsed, consumed = CryptoflexHeader.from_bytes(data)
 
     assert parsed.version == 1

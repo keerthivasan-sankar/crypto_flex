@@ -109,7 +109,7 @@ def deserialize_public_bundle(json_str: str) -> PublicBundle:
             if not isinstance(alg_id, str) or not isinstance(key_b64, str):
                 raise ValueError("Missing or invalid alg_id or key_b64")
             
-            public_keys.append((alg_id, base64.b64decode(key_b64)))
+            public_keys.append((alg_id, base64.b64decode(key_b64, validate=True)))
             
         return PublicBundle(profile_id=profile_id, public_keys=public_keys)
     except Exception as e:
@@ -121,6 +121,12 @@ def export_keyset_bytes(keyset: KeySet, password: str | bytes, *, use_argon2: bo
 
     Default KDF is Argon2id (`CFLA` header). Set `use_argon2=False` for Scrypt (`CFLK` header).
     """
+    if keyset.profile.profile_id != keyset.public_bundle.profile_id:
+        raise ValueError("cannot export keyset: profile mismatch between keyset and public bundle")
+    if len(keyset.profile.sources) != len(keyset.public_bundle.public_keys):
+        raise ValueError("cannot export keyset: component count mismatch between profile and public bundle")
+    if len(keyset.profile.sources) != len(keyset.private_handles):
+        raise ValueError("cannot export keyset: component count mismatch between profile and private handles")
     serialized_privates = []
     for source, priv_handle in zip(keyset.profile.sources, keyset.private_handles):
         alg_id = source.algorithm_id
@@ -183,7 +189,10 @@ def import_keyset_bytes(data: bytes, password: str | bytes) -> KeySet:
     except Exception as e:
         raise DecryptionError("invalid password or corrupted keystore") from e
 
-    profile = get_profile(payload["profile_id"])
+    try:
+        profile = get_profile(payload["profile_id"])
+    except ValueError as e:
+        raise DecryptionError(f"unrecognized profile: {e}") from e
     bundle = deserialize_public_bundle(json.dumps(payload["public_bundle"]))
 
     private_handles_payload = payload.get("private_handles", [])
@@ -224,7 +233,7 @@ def import_keyset_bytes(data: bytes, password: str | bytes) -> KeySet:
             raise DecryptionError(f"missing or invalid priv_b64 for '{alg_id}'")
 
         try:
-            priv_bytes = base64.b64decode(priv_b64)
+            priv_bytes = base64.b64decode(priv_b64, validate=True)
             priv_handle = source.deserialize_private(priv_bytes)
         except Exception as e:
             raise DecryptionError(f"failed to deserialize private key for '{alg_id}': {e}") from e

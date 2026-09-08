@@ -12,9 +12,17 @@ numbers** that don't necessarily move together:
   change for anyone with existing encrypted files and will always be
   called out explicitly here.
 
-## [0.5.1] - Unreleased
+## [0.5.2] - Unreleased
 
-### Security Hardening (OQS Review Remediation Phase A)
+### Security Hardening (OQS Review Remediation Phase A - Round 2)
+- **Authenticated Stream Framing**: Completely rewrote the `cryptoflex.streaming` wire format. Every frame is now strongly typed (`DATA` or `FINAL`). Stream termination is enforced via a mandatory AES-GCM authenticated `FINAL` frame, fixing the `CRYPTO-STREAM-01` truncation vulnerability. Legacy streams using the unauthenticated `0x00000000` marker are rejected.
+- **Strict Policy Enforcement**: `PolicyEngine` now explicitly returns `degraded=True` when a profile contains mixed `approved` and `deprecated` components. Any component marked `disallowed` or `unknown` causes immediate hard rejection.
+- **Strict Keystore Integrity**: `export_keyset_bytes` performs structural consistency checks before writing to disk. `import_keyset_bytes` strictly validates base64 key payloads and `profile_id` presence in `PROFILES`.
+- **CLI Safety**: Added path aliasing checks to `cryptoflex encrypt/decrypt/migrate` to prevent accidental destructive overwrites if `--in` and `--out` resolve to the same file.
+
+## [0.5.1] - 2026-09-08
+
+### Security Hardening (OQS Review Remediation Phase A - Round 1)
 - **Policy Fail-Closed**: Enforce strict validation of `algorithm_status.json` metadata; missing or unknown status causes immediate profile rejection.
 - **Strict Keystore Structural Validation**: Keystore import now enforces exact counts of components in `PublicBundle` and matching of algorithms to prevent subset/superset downgrades.
 - **Independent Test Vectors**: Added independent implementation in `tests/test_vectors.py` to verify JSON KAT vectors using `cryptography` primitives independently of CryptoFlex.

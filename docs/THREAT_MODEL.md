@@ -1,4 +1,4 @@
-# cryptoflex Threat Model & Security Analysis (v0.5.0)
+# cryptoflex Threat Model & Security Analysis (v0.5.2)
 
 This document formalizes the security goals, attacker models, cryptographic invariants, and known operational limitations of `cryptoflex`.
 
@@ -52,7 +52,7 @@ This document formalizes the security goals, attacker models, cryptographic inva
 * **Capabilities**: Can modify encrypted blobs in transit or on disk, flip bits in headers, duplicate/reorder stream chunks, or downgrade requested algorithm profiles.
 * **Mitigation**:
   - **Header Integrity**: AEAD Associated Data (AAD) authentication.
-  - **Stream Protection**: 4-byte sequence counters bound into both nonces and AAD per 64 KB chunk.
+  - **Stream Protection**: Typed frame protocol with authenticated FINAL terminator. Each DATA frame binds a 4-byte sequence counter and frame type tag into both nonces and AAD. Successful decryption requires an authenticated FINAL frame; truncation, reordering, frame type substitution, and trailing data injection are all rejected.
   - **Downgrade Protection**: `min_profile` check executed before cryptographic operations.
 
 ### 2.3 Local Machine / Memory Scraping Adversary
@@ -61,6 +61,12 @@ This document formalizes the security goals, attacker models, cryptographic inva
   - `zeroize()` uses `ctypes.memset` over mutable buffers (`bytearray`/`memoryview`) to prevent Python compiler/interpreter optimizations from omitting memory wipes.
   - Intermediate key material is eagerly deleted (`del`) to minimize heap lifetime.
 * **Limitations**: See Section 3.
+
+### 2.4 Stream Truncation Adversary
+* **Capabilities**: Can truncate an encrypted stream at any chunk boundary, potentially forging a terminal marker to make the truncated stream appear complete.
+* **Mitigation**:
+  - **Authenticated FINAL frame**: The stream terminator is an AES-256-GCM authenticated frame (encrypting empty plaintext with AAD containing `b"FINAL"` and the correct sequence number). An attacker cannot forge this frame without the root key.
+  - **Legacy streams**: Prior versions (before v0.5.2) used an unauthenticated `0x00000000` terminal marker which could not provide truncation integrity. These legacy streams are rejected by the current decoder.
 
 ---
 

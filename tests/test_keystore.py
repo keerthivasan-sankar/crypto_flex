@@ -94,3 +94,69 @@ def test_keyset_import_corrupted_bytes_raises_decryption_error():
 
     with pytest.raises(DecryptionError):
         import_keyset_bytes(bytes(encrypted_bytes), "password")
+
+
+def test_export_rejects_profile_mismatch():
+    engine = PolicyEngine()
+    keyset = establish_keys(engine, constraint=Constraint.FAST)
+    keyset.public_bundle.profile_id = "bogus_profile"
+    with pytest.raises(ValueError, match="profile mismatch"):
+        export_keyset_bytes(keyset, "password")
+
+
+def test_export_rejects_component_count_mismatch():
+    engine = PolicyEngine()
+    keyset = establish_keys(engine, constraint=Constraint.FAST)
+    keyset.public_bundle.public_keys.pop()
+    with pytest.raises(ValueError, match="component count mismatch"):
+        export_keyset_bytes(keyset, "password")
+
+
+def test_import_rejects_invalid_profile_id():
+    import json, os
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    from cryptoflex.keystore import MAGIC_KEYSTORE_ARGON2, _derive_wrapping_key, SALT_LEN, NONCE_LEN
+
+    payload = {
+        "profile_id": "nonexistent_profile_id",
+        "public_bundle": {"profile_id": "nonexistent_profile_id", "public_keys": []},
+        "private_handles": []
+    }
+    plaintext = json.dumps(payload).encode("utf-8")
+    salt = os.urandom(SALT_LEN)
+    nonce = os.urandom(NONCE_LEN)
+    wrapping_key = _derive_wrapping_key("pass", salt, "argon2id")
+    aesgcm = AESGCM(wrapping_key)
+    ct = aesgcm.encrypt(nonce, plaintext, MAGIC_KEYSTORE_ARGON2)
+    blob = MAGIC_KEYSTORE_ARGON2 + salt + nonce + ct
+
+    with pytest.raises(DecryptionError, match="unrecognized profile"):
+        import_keyset_bytes(blob, "pass")
+
+
+def test_deserialize_public_bundle_rejects_garbage_base64():
+    json_str = '{"profile_id": "classical_only", "public_keys": [{"alg_id": "x25519", "key_b64": "not_base_64!@#"}]}'
+    with pytest.raises(DecryptionError, match="Malformed public bundle"):
+        deserialize_public_bundle(json_str)
+
+
+def test_import_rejects_garbage_base64_private_handle():
+    import json, os
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    from cryptoflex.keystore import MAGIC_KEYSTORE_ARGON2, _derive_wrapping_key, SALT_LEN, NONCE_LEN
+    
+    payload = {
+        "profile_id": "classical_only",
+        "public_bundle": {"profile_id": "classical_only", "public_keys": [{"alg_id": "x25519", "key_b64": "aaaa"}]},
+        "private_handles": [{"alg_id": "x25519", "priv_b64": "not_base_64!@#"}]
+    }
+    plaintext = json.dumps(payload).encode("utf-8")
+    salt = os.urandom(SALT_LEN)
+    nonce = os.urandom(NONCE_LEN)
+    wrapping_key = _derive_wrapping_key("pass", salt, "argon2id")
+    aesgcm = AESGCM(wrapping_key)
+    ct = aesgcm.encrypt(nonce, plaintext, MAGIC_KEYSTORE_ARGON2)
+    blob = MAGIC_KEYSTORE_ARGON2 + salt + nonce + ct
+    
+    with pytest.raises(DecryptionError, match="failed to deserialize private key"):
+        import_keyset_bytes(blob, "pass")

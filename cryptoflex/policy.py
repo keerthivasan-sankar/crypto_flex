@@ -69,43 +69,55 @@ class PolicyEngine:
     def __init__(self, risk_table: Optional[dict] = None):
         self.risk_table = risk_table if risk_table is not None else _load_risk_table()
 
-    def _is_profile_acceptable(self, profile: SecurityProfile, require_quantum_safe: bool) -> bool:
+    def _is_profile_acceptable(self, profile: SecurityProfile, require_quantum_safe: bool) -> tuple[bool, bool, str]:
         """Validates that a profile is acceptable under current policy.
         
         Enforces a fail-closed model: any missing, unknown, or malformed
         metadata in the risk table causes the profile to be rejected.
+
+        Returns (is_acceptable, is_degraded, reason_if_degraded). A profile with at least
+        one 'approved' component is usable but is considered 'degraded' if any component
+        is 'deprecated'.
         """
         algos = self.risk_table.get("algorithms")
         if not isinstance(algos, dict):
-            return False
+            return False, False, ""
 
         statuses = []
         is_qs = False
+        deprecated_components = []
         for source in profile.sources:
             record = algos.get(source.algorithm_id)
             if not isinstance(record, dict):
-                return False  # Missing or malformed record -> fail closed
+                return False, False, ""  # Missing or malformed record -> fail closed
 
             status = record.get("status")
             if status not in ("approved", "deprecated"):
-                return False  # Unknown or missing status -> fail closed
+                return False, False, ""  # Unknown, missing, or disallowed status -> fail closed
             statuses.append(status)
+            if status == "deprecated":
+                deprecated_components.append(source.algorithm_id)
 
             qs_flag = record.get("quantum_safe")
             if qs_flag is True:
                 is_qs = True
             elif qs_flag is not False:
-                return False  # Malformed quantum_safe flag -> fail closed
+                return False, False, ""  # Malformed quantum_safe flag -> fail closed
 
         if require_quantum_safe and not is_qs:
-            return False
+            return False, False, ""
 
         # A profile is fully deprecated only if EVERY source is deprecated.
         # This matches the hybrid combiner security property.
         if all(s == "deprecated" for s in statuses):
-            return False
+            return False, False, ""
 
-        return True
+        is_degraded = len(deprecated_components) > 0
+        reason = ""
+        if is_degraded:
+            reason = f"contains deprecated component(s): {', '.join(deprecated_components)}"
+
+        return True, is_degraded, reason
 
     def _candidate_order(self, constraint: Constraint) -> list[str]:
         """Ordered list of profile_ids to try, best-first, for a given
@@ -140,18 +152,19 @@ class PolicyEngine:
             if not profile.is_available():
                 continue
 
-            if not self._is_profile_acceptable(profile, require_quantum_safe):
+            acceptable, mixed_degraded, mixed_reason = self._is_profile_acceptable(profile, require_quantum_safe)
+            if not acceptable:
                 continue
 
-            degraded = profile_id != ideal_id
-            reason = (
-                f"selected '{profile_id}' for constraint={constraint.value}"
-                + (
-                    f" (fell back from '{ideal_id}': unavailable or deprecated)"
-                    if degraded
-                    else ""
-                )
-            )
+            degraded = profile_id != ideal_id or mixed_degraded
+            
+            reason_parts = [f"selected '{profile_id}' for constraint={constraint.value}"]
+            if profile_id != ideal_id:
+                reason_parts.append(f"(fell back from '{ideal_id}': unavailable or deprecated)")
+            if mixed_degraded:
+                reason_parts.append(f"(degraded: {mixed_reason})")
+                
+            reason = " ".join(reason_parts)
             return PolicyDecision(
                 profile=profile,
                 reason=reason,

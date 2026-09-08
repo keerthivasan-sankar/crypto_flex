@@ -17,18 +17,45 @@ bytes or chunk count) appropriate for AES-256-GCM.
 To prevent chunk-reordering, truncation, or insertion attacks:
   - Each chunk is encrypted using a unique 12-byte nonce formed by
     concatenating the header's 8-byte base nonce with a 4-byte big-endian
-    chunk sequence counter `i`.
-  - The AEAD Associated Data (AAD) for chunk `i` binds the header bytes AND
-    the 4-byte big-endian chunk sequence counter `i`.
-  - The final chunk is explicitly marked, or stream ends with a zero-length
-    terminal chunk indicator, ensuring truncation is detected.
+    chunk sequence counter ``i``.
+  - The AEAD Associated Data (AAD) for chunk ``i`` binds the header bytes,
+    the 4-byte big-endian chunk sequence counter ``i``, and a frame type
+    tag (``DATA`` or ``FINAL``).
+
+Authenticated Stream Termination
+----------------------------------
+The stream is terminated by a mandatory authenticated FINAL frame.  The
+FINAL frame encrypts empty plaintext (producing a 16-byte GCM tag) with
+AAD that includes a ``b"FINAL"`` marker.  This ensures:
+  - Truncation is detected (missing FINAL → decryption error).
+  - A forged terminal marker (e.g., raw ``0x00000000``) is rejected.
+  - Trailing data after FINAL is rejected.
 
 Wire Format for Stream Payload (following the CryptoflexHeader):
-  For each chunk:
-    4 bytes  chunk_payload_length (big-endian integer)
+
+  For each frame:
+    1 byte   frame_type (0x01 = DATA, 0x02 = FINAL)
+    4 bytes  ciphertext_length (big-endian uint32)
     N bytes  AES-256-GCM ciphertext + 16-byte tag
-  Terminal marker:
-    4 bytes  0x00000000 (0 length indicates clean end-of-stream)
+
+  DATA frame:
+    AAD = header_bytes || uint32_be(sequence_number) || b"DATA"
+
+  FINAL frame (always the last frame):
+    plaintext = b""
+    AAD = header_bytes || uint32_be(sequence_number) || b"FINAL"
+    ciphertext_length = 16  (GCM tag over empty plaintext)
+
+  Sequence numbering:
+    DATA   0
+    DATA   1
+    ...
+    DATA   N
+    FINAL  N+1
+
+Legacy streams using the old unauthenticated 0x00000000 terminal marker
+are NOT accepted by this version.  They must be re-encrypted with the
+current format before they can be decrypted.
 """
 
 from __future__ import annotations
@@ -48,6 +75,14 @@ MAX_CHUNK_PLAINTEXT_SIZE = 9 * 1024 * 1024  # 9 MB
 MAX_CHUNK_CIPHERTEXT_SIZE = MAX_CHUNK_PLAINTEXT_SIZE + 16
 MAX_HEADER_SIZE = 64 * 1024  # 64 KB — enough for any realistic future profile
 
+# Frame type constants
+FRAME_TYPE_DATA: int = 0x01
+FRAME_TYPE_FINAL: int = 0x02
+
+# AAD frame type tags
+_AAD_TAG_DATA = b"DATA"
+_AAD_TAG_FINAL = b"FINAL"
+
 
 def _derive_chunk_nonce(base_nonce: bytes, sequence_number: int) -> bytes:
     """Create a 12-byte per-chunk nonce by taking the first 8 bytes of the
@@ -59,9 +94,9 @@ def _derive_chunk_nonce(base_nonce: bytes, sequence_number: int) -> bytes:
     return base_nonce[:8] + struct.pack(">I", sequence_number)
 
 
-def _derive_chunk_aad(header_bytes: bytes, sequence_number: int) -> bytes:
-    """Bind the header bytes and chunk sequence number into AEAD AAD."""
-    return header_bytes + struct.pack(">I", sequence_number)
+def _derive_chunk_aad(header_bytes: bytes, sequence_number: int, frame_tag: bytes) -> bytes:
+    """Bind the header bytes, chunk sequence number, and frame type tag into AEAD AAD."""
+    return header_bytes + struct.pack(">I", sequence_number) + frame_tag
 
 
 def encrypt_stream(
@@ -72,8 +107,8 @@ def encrypt_stream(
 ) -> None:
     """Encrypt a binary input stream into an output stream chunk-by-chunk.
 
-    Writes the serialized header first, followed by chunk length headers and
-    AEAD encrypted blocks.
+    Writes the serialized header first, followed by typed frames: DATA frames
+    for each chunk and a mandatory authenticated FINAL frame at the end.
     """
     derived = derive_root_key(bundle)
     header_bytes = derived.header.to_bytes()
@@ -97,15 +132,24 @@ def encrypt_stream(
                 break
 
             nonce = _derive_chunk_nonce(base_nonce, sequence_number)
-            aad = _derive_chunk_aad(header_bytes, sequence_number)
+            aad = _derive_chunk_aad(header_bytes, sequence_number, _AAD_TAG_DATA)
 
             ct_with_tag = aesgcm.encrypt(nonce, chunk, aad)
+
+            # Write DATA frame: type byte + length + ciphertext
+            output_stream.write(struct.pack("B", FRAME_TYPE_DATA))
             output_stream.write(struct.pack(">I", len(ct_with_tag)))
             output_stream.write(ct_with_tag)
             sequence_number += 1
 
-        # Write terminal marker (0-length chunk)
-        output_stream.write(struct.pack(">I", 0))
+        # Write authenticated FINAL frame
+        final_nonce = _derive_chunk_nonce(base_nonce, sequence_number)
+        final_aad = _derive_chunk_aad(header_bytes, sequence_number, _AAD_TAG_FINAL)
+        final_ct = aesgcm.encrypt(final_nonce, b"", final_aad)
+
+        output_stream.write(struct.pack("B", FRAME_TYPE_FINAL))
+        output_stream.write(struct.pack(">I", len(final_ct)))
+        output_stream.write(final_ct)
     finally:
         from .utils import zeroize
         zeroize(root_key_buf)
@@ -124,12 +168,21 @@ class _StreamReader:
             self.buf.extend(more)
 
         if len(self.buf) < n:
-            raise DecryptionError("decryption failed: truncated chunk")
+            raise DecryptionError("decryption failed: truncated frame")
 
         res = bytes(self.buf[:n])
         del self.buf[:n]
         return res
 
+    def has_remaining(self) -> bool:
+        """Check if there is any data remaining in the buffer or stream."""
+        if len(self.buf) > 0:
+            return True
+        more = self.stream.read(1)
+        if more:
+            self.buf.extend(more)
+            return True
+        return False
 
 
 def decrypt_stream(
@@ -141,7 +194,8 @@ def decrypt_stream(
 ) -> None:
     """Decrypt a chunked stream produced by encrypt_stream.
 
-    Validates header, min_profile, per-chunk AEAD tags, and sequence order.
+    Validates header, min_profile, per-chunk AEAD tags, frame types, sequence
+    order, and the mandatory authenticated FINAL frame.
     Raises DecryptionError or DowngradeError on failure.
 
     **Security Note**: Output is written chunk-by-chunk. If authentication fails
@@ -197,25 +251,65 @@ def decrypt_stream(
         aesgcm = AESGCM(bytes(root_key_buf))
         reader = _StreamReader(unconsumed_initial, input_stream)
         sequence_number = 0
+        received_final = False
 
         while True:
-            length_bytes = reader.read_exact(4)
-            (ct_len,) = struct.unpack(">I", length_bytes)
+            # Read frame type byte
+            try:
+                frame_type_bytes = reader.read_exact(1)
+            except DecryptionError:
+                # No more data and no FINAL received
+                if not received_final:
+                    raise DecryptionError("decryption failed: missing FINAL frame")
+                raise
 
-            if ct_len == 0:
-                # Terminal marker reached
+            frame_type = frame_type_bytes[0]
+
+            if received_final:
+                # Any data after FINAL is an error
+                raise DecryptionError("decryption failed: data after FINAL frame")
+
+            if frame_type == FRAME_TYPE_DATA:
+                length_bytes = reader.read_exact(4)
+                (ct_len,) = struct.unpack(">I", length_bytes)
+
+                if ct_len == 0 or ct_len > MAX_CHUNK_CIPHERTEXT_SIZE:
+                    raise DecryptionError("decryption failed: invalid chunk size")
+
+                ct_with_tag = reader.read_exact(ct_len)
+                nonce = _derive_chunk_nonce(header.nonce, sequence_number)
+                aad = _derive_chunk_aad(header_bytes, sequence_number, _AAD_TAG_DATA)
+
+                plaintext = aesgcm.decrypt(nonce, ct_with_tag, aad)
+                output_stream.write(plaintext)
+                sequence_number += 1
+
+            elif frame_type == FRAME_TYPE_FINAL:
+                length_bytes = reader.read_exact(4)
+                (ct_len,) = struct.unpack(">I", length_bytes)
+
+                if ct_len != 16:
+                    raise DecryptionError("decryption failed: invalid FINAL frame size")
+
+                final_ct = reader.read_exact(ct_len)
+                final_nonce = _derive_chunk_nonce(header.nonce, sequence_number)
+                final_aad = _derive_chunk_aad(header_bytes, sequence_number, _AAD_TAG_FINAL)
+
+                # Verify FINAL frame — decrypting empty plaintext with FINAL AAD
+                aesgcm.decrypt(final_nonce, final_ct, final_aad)
+                received_final = True
+
+                # Check for trailing data
+                if reader.has_remaining():
+                    raise DecryptionError("decryption failed: trailing data after FINAL frame")
+
                 break
+            else:
+                raise DecryptionError(f"decryption failed: invalid frame type 0x{frame_type:02x}")
 
-            if ct_len > MAX_CHUNK_CIPHERTEXT_SIZE:
-                raise DecryptionError("decryption failed: chunk size exceeds limit")
+        if not received_final:
+            raise DecryptionError("decryption failed: missing FINAL frame")
 
-            ct_with_tag = reader.read_exact(ct_len)
-            nonce = _derive_chunk_nonce(header.nonce, sequence_number)
-            aad = _derive_chunk_aad(header_bytes, sequence_number)
-
-            plaintext = aesgcm.decrypt(nonce, ct_with_tag, aad)
-            output_stream.write(plaintext)
-            sequence_number += 1
     except (DowngradeError, DecryptionError):
         raise
     except Exception:
@@ -235,8 +329,12 @@ def migrate_stream(
 ) -> None:
     """Re-encrypt a chunked binary stream under a new PublicBundle (offline migration).
 
-    Performs chunk-by-chunk in-memory streaming re-encryption without using temporary files on disk.
-    Each chunk is decrypted, re-encrypted under the new key/header, and wiped from RAM immediately (best-effort memory hygiene).
+    Performs chunk-by-chunk in-memory streaming re-encryption without using
+    temporary files on disk. Each chunk is decrypted, re-encrypted under the
+    new key/header, and wiped from RAM immediately (best-effort memory hygiene).
+
+    Uses the authenticated frame protocol: reads typed DATA/FINAL frames from
+    the source stream and writes them in the same format to the output.
 
     **Security Note**: Output is written progressively. If migration fails, the
     output stream will be partially written.
@@ -301,42 +399,90 @@ def migrate_stream(
         new_aesgcm = AESGCM(bytes(new_root_key_buf))
         reader = _StreamReader(unconsumed_initial, input_stream)
         sequence_number = 0
+        new_sequence_number = 0
+        received_final = False
 
         while True:
-            length_bytes = reader.read_exact(4)
-            (ct_len,) = struct.unpack(">I", length_bytes)
-
-            if ct_len == 0:
-                break
-
-            if ct_len > MAX_CHUNK_CIPHERTEXT_SIZE:
-                raise DecryptionError("decryption failed: chunk size exceeds limit")
-
-            ct_with_tag = reader.read_exact(ct_len)
-            old_nonce = _derive_chunk_nonce(old_header.nonce, sequence_number)
-            old_aad = _derive_chunk_aad(old_header_bytes, sequence_number)
-
-            # 1. Decrypt chunk under old key
-            chunk_pt = old_aesgcm.decrypt(old_nonce, ct_with_tag, old_aad)
-            chunk_pt_buf = bytearray(chunk_pt)
-            del chunk_pt
-
+            # Read frame type
             try:
-                # 2. Encrypt chunk under new key
-                new_nonce = _derive_chunk_nonce(new_base_nonce, sequence_number)
-                new_aad = _derive_chunk_aad(new_header_bytes, sequence_number)
-                new_ct_with_tag = new_aesgcm.encrypt(new_nonce, bytes(chunk_pt_buf), new_aad)
+                frame_type_bytes = reader.read_exact(1)
+            except DecryptionError:
+                if not received_final:
+                    raise DecryptionError("decryption failed: missing FINAL frame")
+                raise
 
-                output_stream.write(struct.pack(">I", len(new_ct_with_tag)))
-                output_stream.write(new_ct_with_tag)
-            finally:
-                from .utils import zeroize
-                zeroize(chunk_pt_buf)
+            frame_type = frame_type_bytes[0]
 
-            sequence_number += 1
+            if received_final:
+                raise DecryptionError("decryption failed: data after FINAL frame")
 
-        # Write terminal marker (0-length chunk)
-        output_stream.write(struct.pack(">I", 0))
+            if frame_type == FRAME_TYPE_DATA:
+                length_bytes = reader.read_exact(4)
+                (ct_len,) = struct.unpack(">I", length_bytes)
+
+                if ct_len == 0 or ct_len > MAX_CHUNK_CIPHERTEXT_SIZE:
+                    raise DecryptionError("decryption failed: invalid chunk size")
+
+                ct_with_tag = reader.read_exact(ct_len)
+                old_nonce = _derive_chunk_nonce(old_header.nonce, sequence_number)
+                old_aad = _derive_chunk_aad(old_header_bytes, sequence_number, _AAD_TAG_DATA)
+
+                # 1. Decrypt chunk under old key
+                chunk_pt = old_aesgcm.decrypt(old_nonce, ct_with_tag, old_aad)
+                chunk_pt_buf = bytearray(chunk_pt)
+                del chunk_pt
+
+                try:
+                    # 2. Encrypt chunk under new key
+                    new_nonce = _derive_chunk_nonce(new_base_nonce, new_sequence_number)
+                    new_aad = _derive_chunk_aad(new_header_bytes, new_sequence_number, _AAD_TAG_DATA)
+                    new_ct_with_tag = new_aesgcm.encrypt(new_nonce, bytes(chunk_pt_buf), new_aad)
+
+                    output_stream.write(struct.pack("B", FRAME_TYPE_DATA))
+                    output_stream.write(struct.pack(">I", len(new_ct_with_tag)))
+                    output_stream.write(new_ct_with_tag)
+                finally:
+                    from .utils import zeroize
+                    zeroize(chunk_pt_buf)
+
+                sequence_number += 1
+                new_sequence_number += 1
+
+            elif frame_type == FRAME_TYPE_FINAL:
+                length_bytes = reader.read_exact(4)
+                (ct_len,) = struct.unpack(">I", length_bytes)
+
+                if ct_len != 16:
+                    raise DecryptionError("decryption failed: invalid FINAL frame size")
+
+                final_ct = reader.read_exact(ct_len)
+                final_nonce = _derive_chunk_nonce(old_header.nonce, sequence_number)
+                final_aad = _derive_chunk_aad(old_header_bytes, sequence_number, _AAD_TAG_FINAL)
+
+                # Verify old FINAL frame
+                old_aesgcm.decrypt(final_nonce, final_ct, final_aad)
+                received_final = True
+
+                # Write new FINAL frame
+                new_final_nonce = _derive_chunk_nonce(new_base_nonce, new_sequence_number)
+                new_final_aad = _derive_chunk_aad(new_header_bytes, new_sequence_number, _AAD_TAG_FINAL)
+                new_final_ct = new_aesgcm.encrypt(new_final_nonce, b"", new_final_aad)
+
+                output_stream.write(struct.pack("B", FRAME_TYPE_FINAL))
+                output_stream.write(struct.pack(">I", len(new_final_ct)))
+                output_stream.write(new_final_ct)
+
+                # Check for trailing data
+                if reader.has_remaining():
+                    raise DecryptionError("decryption failed: trailing data after FINAL frame")
+
+                break
+            else:
+                raise DecryptionError(f"decryption failed: invalid frame type 0x{frame_type:02x}")
+
+        if not received_final:
+            raise DecryptionError("decryption failed: missing FINAL frame")
+
     except (DowngradeError, DecryptionError):
         raise
     except Exception:
@@ -345,5 +491,3 @@ def migrate_stream(
         from .utils import zeroize
         zeroize(old_root_key_buf)
         zeroize(new_root_key_buf)
-
-

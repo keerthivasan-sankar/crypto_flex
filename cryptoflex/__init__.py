@@ -42,7 +42,7 @@ from .sources import (
 from .streaming import decrypt_stream, encrypt_stream, migrate_stream
 from .utils import zeroize
 
-__version__ = "0.5.0"
+__version__ = "0.5.2"
 
 __all__ = [
     # high-level AEAD API (recommended for file encryption)
@@ -52,7 +52,7 @@ __all__ = [
     "migrate",
     "migrate_file",
     "migrate_stream",
-    # ephemeral / forward-secret messaging API
+    # ephemeral / per-message ephemeral keying API
     "ephemeral_encrypt",
     "ephemeral_decrypt",
     "WireMessage",
