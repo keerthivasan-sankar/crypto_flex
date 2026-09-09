@@ -1,12 +1,12 @@
 """
 verify_local.py
 ================
-Comprehensive Local Verification Script for cryptoflex v0.5.1-dev.
+Comprehensive Local Verification Script for cryptoflex v0.5.2.
 
 Demonstrates:
   1. Key Generation via PolicyEngine
   2. High-Level AEAD Encryption & Decryption (encrypt/decrypt)
-  3. Ephemeral Forward-Secret Messaging Mode (ephemeral_encrypt/ephemeral_decrypt)
+  3. Ephemeral Messaging / Per-Message Ephemeral Keying (ephemeral_encrypt/ephemeral_decrypt)
   4. Encrypted Password-Wrapped Keystore (Argon2id + Scrypt back-compat)
   5. In-Place Memory Zeroization (zeroize)
   6. Offline Bulk Migration CLI Workflow (encrypt -> migrate -> decrypt)
@@ -44,7 +44,7 @@ def print_step(title: str):
 
 
 def main():
-    print("Running Local Cryptographic Verification for cryptoflex v0.5.1-dev...")
+    print("Running Local Cryptographic Verification for cryptoflex v0.5.2...")
 
     # --- 1. Establish Keys ---
     print_step("1. Establishing Keys via PolicyEngine (Constraint: FAST)")
@@ -68,8 +68,9 @@ def main():
     assert decrypted == secret_message, "Decryption mismatch!"
     print(f"Decryption SUCCESS! Recovered: '{decrypted.decode()}'")
 
-    # --- 3. Ephemeral Forward-Secret Messaging ---
-    print_step("3. Forward-Secret Ephemeral Messaging Mode")
+    # --- 3. Ephemeral Messaging / Per-Message Ephemeral Keying ---
+    print_step("3. Ephemeral Messaging / Per-Message Ephemeral Keying")
+    print("Each message uses fresh sender-side ephemeral key material. This does not provide full forward secrecy against later compromise of the recipient's long-term private key.")
     ephemeral_text = b"Hello, this message uses a fresh root key generated & discarded per call!"
     wire_msg = ephemeral_encrypt(keyset.public_bundle, ephemeral_text)
     print(f"Ephemeral Blob Size : {len(wire_msg.encrypted_blob)} bytes")
@@ -155,9 +156,14 @@ def main():
 
     # --- 10. Downgrade Protection ---
     print_step("10. Downgrade Semantics (min_profile Enforcement)")
-    print("Attempting to decrypt classical_only blob when min_profile='hybrid_standard'...")
+    
+    weak_keyset = establish_keys(engine, constraint=Constraint.FAST)
+    weak_blob = encrypt(weak_keyset.public_bundle, b"Weak Profile Payload")
+
+    print(f"Constructed weaker profile ciphertext using '{weak_keyset.profile.profile_id}'.")
+    print("Attempting to decrypt weaker blob when min_profile='hybrid_standard'...")
     try:
-        decrypt(keyset.private_handles, blob, min_profile="hybrid_standard")
+        decrypt(weak_keyset.private_handles, weak_blob, min_profile="hybrid_standard")
         print("FAIL: Downgrade attempt was NOT caught!")
         sys.exit(1)
     except DowngradeError as e:

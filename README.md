@@ -160,7 +160,7 @@ To enforce a minimum: `decrypt(handles, blob, min_profile="hybrid_standard")`. T
 
 ## Design notes
 
-**Combiner.** The design is intended to combine the component secrets using HKDF-SHA384 with injective length-prefixed encoding and profile-scoped context. This is a project-specific construction requiring independent cryptographic review; the repository does not claim a formal security proof.
+**Combiner.** The design is intended to combine the component secrets using HKDF-SHA384 with injective length-prefixed encoding and a fixed CryptoFlex domain-separation context. This is a project-specific construction requiring independent cryptographic review; the repository does not claim a formal security proof.
 
 **Header integrity.** The full serialized header is passed as Associated Data to AES-256-GCM. Any modification to algorithm identifiers, the nonce, or the ciphertext components causes decryption to fail before the payload is touched.
 

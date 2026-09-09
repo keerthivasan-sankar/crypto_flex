@@ -12,7 +12,7 @@
 
 | Package | Version Range | Purpose |
 | :--- | :--- | :--- |
-| `cryptography` | `>=44.0.0,<45.0.0` | AES-256-GCM, X25519 (Classical KEM), HKDF-SHA384, Scrypt, Argon2id |
+| `cryptography` | `>=44.0.0,<51.0.0` | AES-256-GCM, X25519 (Classical KEM), HKDF-SHA384, Scrypt, Argon2id |
 | `liboqs-python` | `>=0.16.0,<0.17.0` | Python bindings for liboqs (ML-KEM) |
 
 ## 2. Underlying Native C Libraries

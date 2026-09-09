@@ -39,7 +39,19 @@ jobs:
       - name: Verify minimum cryptography version compatibility
         run: |
           pip install "cryptography==44.0.0"
-          pytest -v -k "test_keystore or test_argon2id"
+          python -c "
+          import cryptography
+          assert cryptography.__version__ == '44.0.0', f'Expected 44.0.0, got {cryptography.__version__}'
+          from cryptoflex import PolicyEngine, establish_keys, export_keyset_bytes, import_keyset_bytes, encrypt, decrypt
+          keyset = establish_keys(PolicyEngine())
+          pw = 'testpass'
+          k = export_keyset_bytes(keyset, pw, use_argon2=True)
+          keyset_imported = import_keyset_bytes(k, pw)
+          pt = b'test payload'
+          ct = encrypt(keyset.public_bundle, pt)
+          assert decrypt(keyset_imported.private_handles, ct) == pt
+          print('Minimum cryptography version 44.0.0 compatibility verified successfully.')
+          "
 
   test-with-real-pqc:
     runs-on: ubuntu-latest
