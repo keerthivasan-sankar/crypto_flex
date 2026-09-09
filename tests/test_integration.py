@@ -130,3 +130,47 @@ def test_migrate_api_reencrypts_blob(hybrid_mock_profile, FixedProfileEngine):
     decrypt_stream(new_keyset.private_handles, migrated_stream, out_stream)
     assert out_stream.getvalue() == plaintext
 
+
+def test_migrate_file_rejects_same_path_aliasing(tmp_path):
+    from cryptoflex.api import establish_keys, migrate_file
+    from cryptoflex.policy import Constraint
+
+    keyset_a = establish_keys(constraint=Constraint.FAST)
+    keyset_b = establish_keys(constraint=Constraint.FAST)
+
+    file_path = tmp_path / "data.cflx"
+    file_path.write_bytes(b"some content")
+
+    with pytest.raises(ValueError, match="same file"):
+        migrate_file(keyset_a.private_handles, str(file_path), str(file_path), keyset_b.public_bundle)
+
+    with pytest.raises(ValueError, match="same file"):
+        migrate_file(
+            keyset_a.private_handles,
+            str(file_path),
+            str(file_path),
+            keyset_b.public_bundle,
+            stream=True,
+        )
+
+
+def test_migrate_file_atomic_success(tmp_path):
+    from cryptoflex.api import decrypt, encrypt, establish_keys, migrate_file
+    from cryptoflex.policy import Constraint
+
+    keyset_a = establish_keys(constraint=Constraint.FAST)
+    keyset_b = establish_keys(constraint=Constraint.FAST)
+
+    in_file = tmp_path / "input.cflx"
+    out_file = tmp_path / "output.cflx"
+
+    plaintext = b"Test file migration payload 12345"
+    in_file.write_bytes(encrypt(keyset_a.public_bundle, plaintext))
+
+    migrate_file(keyset_a.private_handles, str(in_file), str(out_file), keyset_b.public_bundle)
+
+    assert out_file.exists()
+    recovered = decrypt(keyset_b.private_handles, out_file.read_bytes())
+    assert recovered == plaintext
+
+

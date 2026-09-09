@@ -36,6 +36,11 @@ jobs:
           CRYPTOFLEX_DISABLE_PQC: "1"
         run: pytest -v
 
+      - name: Verify minimum cryptography version compatibility
+        run: |
+          pip install "cryptography==44.0.0"
+          pytest -v -k "test_keystore or test_argon2id"
+
   test-with-real-pqc:
     runs-on: ubuntu-latest
     steps:

@@ -34,6 +34,8 @@ when the header's profile is weaker than the caller's min_profile.
 from __future__ import annotations
 
 import os
+import stat
+import tempfile
 from dataclasses import dataclass
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -108,8 +110,12 @@ def derive_root_key(bundle: PublicBundle) -> DerivedRoot:
     """Given someone else's PublicBundle, derive a fresh root key and
     produce the header to send/store alongside your ciphertext.
 
-    NOTE: This is the low-level API.  Prefer encrypt() which handles
-    AEAD and header authentication automatically.
+    .. note::
+        This is a low-level key derivation function. Advanced callers using
+        this function directly MUST bind and authenticate the full header
+        (e.g., as AEAD Associated Data) and manage nonce/IV lifecycle.
+        Prefer ``encrypt()`` which handles AEAD encryption and header
+        authentication automatically.
     """
     profile = get_profile(bundle.profile_id)
     if len(profile.sources) != len(bundle.public_keys):
@@ -155,6 +161,12 @@ def recover_root_key(
     is raised BEFORE any cryptographic operation.
 
     All cryptographic failures are collapsed into DecryptionError.
+
+    .. note::
+        This is a low-level key recovery function. Callers MUST verify
+        header and payload authenticity (e.g. via AEAD tag validation)
+        before using the recovered root key. Prefer ``decrypt()`` which
+        enforces AEAD payload and header authentication automatically.
     """
     # --- downgrade check (before any crypto) ---
     try:
@@ -357,14 +369,45 @@ def migrate_file(
 
     If `stream` is True, chunked streaming migration is used.
     """
-    if stream:
-        from .streaming import migrate_stream
-        with open(input_path, "rb") as fin, open(output_path, "wb") as fout:
-            migrate_stream(private_handles, fin, fout, new_bundle, min_profile=min_profile)
-    else:
-        with open(input_path, "rb") as fin:
-            blob = fin.read()
-        migrated = migrate(private_handles, blob, new_bundle, min_profile=min_profile)
-        with open(output_path, "wb") as fout:
-            fout.write(migrated)
+    if os.path.exists(input_path) and os.path.exists(output_path):
+        if os.path.samefile(input_path, output_path):
+            raise ValueError(f"input and output paths resolve to the same file: '{input_path}'")
+
+    dest_dir = os.path.dirname(os.path.abspath(output_path))
+    fd, temp_path = tempfile.mkstemp(dir=dest_dir, prefix=".cryptoflex_tmp_")
+    try:
+        os.chmod(temp_path, stat.S_IRUSR | stat.S_IWUSR)
+    except (OSError, AttributeError):
+        pass
+
+    try:
+        if stream:
+            from .streaming import migrate_stream
+            with open(input_path, "rb") as fin, os.fdopen(fd, "wb") as fout:
+                migrate_stream(private_handles, fin, fout, new_bundle, min_profile=min_profile)
+                fout.flush()
+                try:
+                    os.fsync(fout.fileno())
+                except (OSError, AttributeError):
+                    pass
+        else:
+            os.close(fd)
+            with open(input_path, "rb") as fin:
+                blob = fin.read()
+            migrated = migrate(private_handles, blob, new_bundle, min_profile=min_profile)
+            with open(temp_path, "wb") as fout:
+                fout.write(migrated)
+                fout.flush()
+                try:
+                    os.fsync(fout.fileno())
+                except (OSError, AttributeError):
+                    pass
+        os.replace(temp_path, output_path)
+    except Exception:
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
+        raise
+
 

@@ -39,7 +39,7 @@ numbers** that don't necessarily move together:
 ## [0.4.1] - 2026-09-03
 
 ### Added
-- **Argon2id Keystore Protection**: Upgraded `cryptoflex.keystore` to support Argon2id password key derivation (`CFLA` header magic; $m=64\text{MB}, t=3, p=4$) as the new default for `export_keyset_bytes()`, while maintaining full backward compatibility with Scrypt (`CFLK` magic header).
+- **Argon2id Keystore Protection**: Upgraded `cryptoflex.keystore` to support Argon2id password key derivation (`CFLA` header magic; $m=32\text{MB}, t=3, p=1$) as the new default for `export_keyset_bytes()`, while maintaining full backward compatibility with Scrypt (`CFLK` magic header).
 - **Best-Effort Memory Hygiene**: Added `cryptoflex.utils.zeroize(buffer)` helper to wipe sensitive `bytearray` and `memoryview` objects in-place (`0x00`). Note that Python's memory allocator makes true deterministic zeroization impossible (e.g., intermediate immutable `bytes` copies may persist), but this provides defense-in-depth against simple RAM retention risks.
 - **CLI Migration Command**: Added `cryptoflex migrate` CLI subcommand allowing users to re-encrypt existing `.cflx` files under a new recipient `PublicBundle` to upgrade security profiles completely offline.
 
@@ -68,7 +68,7 @@ numbers** that don't necessarily move together:
 
 ### Security Fixes (Discussion #2534)
 - **Header v2 Format**: Added 12-byte random nonce to header; full header byte string authenticated as AES-256-GCM Associated Data (AAD).
-- **Canonical Combiner**: Rewrote `combiner.py` to use length-prefixed injective encoding with profile-specific domain separation (`b"cryptoflex-hybrid-kem-combiner-" + profile_id`) and HKDF-SHA384.
+- **Canonical Combiner**: Rewrote `combiner.py` to use length-prefixed injective encoding with domain separation context string (`b"cryptoflex-hybrid-kem-combiner-v2"`) and HKDF-SHA384.
 - **Explicit Downgrade Protection**: Added `strength_level` integers to profiles and `min_profile` parameters to `decrypt()`, raising `DowngradeError` prior to decapsulation.
 - **Uniform Error Boundaries**: All cryptographic failures collapse into generic `DecryptionError` to eliminate timing and error side-channels.
 
