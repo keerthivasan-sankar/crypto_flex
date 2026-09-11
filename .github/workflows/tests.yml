@@ -41,10 +41,10 @@ jobs:
 
       - name: Verify minimum cryptography version compatibility
         run: |
-          pip install "cryptography==44.0.0"
+          pip install "cryptography==50.0.0"
           python -c "
           import cryptography
-          assert cryptography.__version__ == '44.0.0', f'Expected 44.0.0, got {cryptography.__version__}'
+          assert cryptography.__version__ == '50.0.0', f'Expected 50.0.0, got {cryptography.__version__}'
           from cryptoflex import PolicyEngine, establish_keys, export_keyset_bytes, import_keyset_bytes, encrypt, decrypt
           keyset = establish_keys(PolicyEngine())
           pw = 'testpass'
@@ -53,7 +53,7 @@ jobs:
           pt = b'test payload'
           ct = encrypt(keyset.public_bundle, pt)
           assert decrypt(keyset_imported.private_handles, ct) == pt
-          print('Minimum cryptography version 44.0.0 compatibility verified successfully.')
+          print('Minimum cryptography version 50.0.0 compatibility verified successfully.')
           "
 
   test-with-real-pqc:

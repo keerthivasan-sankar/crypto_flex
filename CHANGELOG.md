@@ -12,7 +12,7 @@ numbers** that don't necessarily move together:
   change for anyone with existing encrypted files and will always be
   called out explicitly here.
 
-## [0.5.2] - 2026-09-08
+## [0.5.2] - Release Candidate
 
 ### Security Hardening (OQS Review Remediation Phase A - Round 2)
 - **Authenticated Stream Framing**: Completely rewrote the `cryptoflex.streaming` wire format. Every frame is now strongly typed (`DATA` or `FINAL`). Stream termination is enforced via a mandatory AES-GCM authenticated `FINAL` frame, fixing the `CRYPTO-STREAM-01` truncation vulnerability. Legacy streams using the unauthenticated `0x00000000` marker are rejected.
