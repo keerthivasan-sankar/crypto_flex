@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="794" viewBox="0 0 720 794">
+  <rect width="720" height="794" rx="12" fill="#0d1117"/>
+  <text x="360" y="36" text-anchor="middle" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="20" font-weight="700" fill="#e6edf3">CryptoFlex — Test &amp; Verification Results</text>
+  <text x="360" y="60" text-anchor="middle" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="13" fill="#8b949e">v0.5.2  ·  2026-09-11</text>
+  <text x="360" y="78" text-anchor="middle" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="11" fill="#6e7681">Unaudited research prototype — results do not constitute a security proof</text>
+  <rect x="32" y="90" width="320" height="88" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+  <text x="192" y="114" text-anchor="middle" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="12" font-weight="600" fill="#8b949e">Automated Tests (pytest)</text>
+  <text x="192" y="142" text-anchor="middle" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="26" font-weight="700" fill="#3fb950">128 / 128</text>
+  <text x="192" y="162" text-anchor="middle" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="11" font-weight="600" fill="#3fb950">ALL PASSED</text>
+  <rect x="368" y="90" width="320" height="88" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+  <text x="528" y="114" text-anchor="middle" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="12" font-weight="600" fill="#8b949e">Local Verification (verify_local.py)</text>
+  <text x="528" y="142" text-anchor="middle" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="26" font-weight="700" fill="#3fb950">10 / 10</text>
+  <text x="528" y="162" text-anchor="middle" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="11" font-weight="600" fill="#3fb950">ALL PASSED</text>
+  <text x="32" y="222" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#8b949e">Test Categories</text>
+  <text x="36" y="258" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="12" fill="#e6edf3">Adversarial</text>
+  <rect x="192" y="246" width="436" height="16" rx="4" fill="#21262d"/>
+  <rect x="192" y="246" width="436" height="16" rx="4" fill="#238636"/>
+  <text x="684" y="258" text-anchor="end" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="11" font-weight="600" fill="#3fb950">9/9</text>
+  <text x="36" y="286" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="12" fill="#e6edf3">CLI</text>
+  <rect x="192" y="274" width="436" height="16" rx="4" fill="#21262d"/>
+  <rect x="192" y="274" width="436" height="16" rx="4" fill="#238636"/>
+  <text x="684" y="286" text-anchor="end" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="11" font-weight="600" fill="#3fb950">5/5</text>
+  <text x="36" y="314" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="12" fill="#e6edf3">Combiner</text>
+  <rect x="192" y="302" width="436" height="16" rx="4" fill="#21262d"/>
+  <rect x="192" y="302" width="436" height="16" rx="4" fill="#238636"/>
+  <text x="684" y="314" text-anchor="end" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="11" font-weight="600" fill="#3fb950">9/9</text>
+  <text x="36" y="342" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="12" fill="#e6edf3">Cross-Version</text>
+  <rect x="192" y="330" width="436" height="16" rx="4" fill="#21262d"/>
+  <rect x="192" y="330" width="436" height="16" rx="4" fill="#238636"/>
+  <text x="684" y="342" text-anchor="end" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="11" font-weight="600" fill="#3fb950">2/2</text>
+  <text x="36" y="370" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="12" fill="#e6edf3">Encrypt/Decrypt</text>
+  <rect x="192" y="358" width="436" height="16" rx="4" fill="#21262d"/>
+  <rect x="192" y="358" width="436" height="16" rx="4" fill="#238636"/>
+  <text x="684" y="370" text-anchor="end" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="11" font-weight="600" fill="#3fb950">7/7</text>
+  <text x="36" y="398" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="12" fill="#e6edf3">Ephemeral</text>
+  <rect x="192" y="386" width="436" height="16" rx="4" fill="#21262d"/>
+  <rect x="192" y="386" width="436" height="16" rx="4" fill="#238636"/>
+  <text x="684" y="398" text-anchor="end" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="11" font-weight="600" fill="#3fb950">12/12</text>
+  <text x="36" y="426" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="12" fill="#e6edf3">Fuzz (Hypothesis)</text>
+  <rect x="192" y="414" width="436" height="16" rx="4" fill="#21262d"/>
+  <rect x="192" y="414" width="436" height="16" rx="4" fill="#238636"/>
+  <text x="684" y="426" text-anchor="end" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="11" font-weight="600" fill="#3fb950">1/1</text>
+  <text x="36" y="454" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="12" fill="#e6edf3">Header Parsing</text>
+  <rect x="192" y="442" width="436" height="16" rx="4" fill="#21262d"/>
+  <rect x="192" y="442" width="436" height="16" rx="4" fill="#238636"/>
+  <text x="684" y="454" text-anchor="end" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="11" font-weight="600" fill="#3fb950">13/13</text>
+  <text x="36" y="482" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="12" fill="#e6edf3">Integration</text>
+  <rect x="192" y="470" width="436" height="16" rx="4" fill="#21262d"/>
+  <rect x="192" y="470" width="436" height="16" rx="4" fill="#238636"/>
+  <text x="684" y="482" text-anchor="end" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="11" font-weight="600" fill="#3fb950">9/9</text>
+  <text x="36" y="510" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="12" fill="#e6edf3">Keystore</text>
+  <rect x="192" y="498" width="436" height="16" rx="4" fill="#21262d"/>
+  <rect x="192" y="498" width="436" height="16" rx="4" fill="#238636"/>
+  <text x="684" y="510" text-anchor="end" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="11" font-weight="600" fill="#3fb950">15/15</text>
+  <text x="36" y="538" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="12" fill="#e6edf3">Policy Engine</text>
+  <rect x="192" y="526" width="436" height="16" rx="4" fill="#21262d"/>
+  <rect x="192" y="526" width="436" height="16" rx="4" fill="#238636"/>
+  <text x="684" y="538" text-anchor="end" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="11" font-weight="600" fill="#3fb950">11/11</text>
+  <text x="36" y="566" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="12" fill="#e6edf3">KEM Sources</text>
+  <rect x="192" y="554" width="436" height="16" rx="4" fill="#21262d"/>
+  <rect x="192" y="554" width="436" height="16" rx="4" fill="#238636"/>
+  <text x="684" y="566" text-anchor="end" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="11" font-weight="600" fill="#3fb950">4/4</text>
+  <text x="36" y="594" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="12" fill="#e6edf3">Streaming AEAD</text>
+  <rect x="192" y="582" width="436" height="16" rx="4" fill="#21262d"/>
+  <rect x="192" y="582" width="436" height="16" rx="4" fill="#238636"/>
+  <text x="684" y="594" text-anchor="end" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="11" font-weight="600" fill="#3fb950">28/28</text>
+  <text x="36" y="622" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="12" fill="#e6edf3">Utilities</text>
+  <rect x="192" y="610" width="436" height="16" rx="4" fill="#21262d"/>
+  <rect x="192" y="610" width="436" height="16" rx="4" fill="#238636"/>
+  <text x="684" y="622" text-anchor="end" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="11" font-weight="600" fill="#3fb950">2/2</text>
+  <text x="36" y="650" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="12" fill="#e6edf3">Test Vectors</text>
+  <rect x="192" y="638" width="436" height="16" rx="4" fill="#21262d"/>
+  <rect x="192" y="638" width="436" height="16" rx="4" fill="#238636"/>
+  <text x="684" y="650" text-anchor="end" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="11" font-weight="600" fill="#3fb950">1/1</text>
+  <line x1="32" y1="686" x2="688" y2="686" stroke="#30363d" stroke-width="1"/>
+  <text x="360" y="704" text-anchor="middle" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="10" fill="#6e7681">Test results indicate implementation behavior under tested cases.</text>
+  <text x="360" y="718" text-anchor="middle" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="10" fill="#6e7681">They do not constitute a cryptographic security proof or independent security audit.</text>
+</svg>

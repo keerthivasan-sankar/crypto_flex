@@ -177,7 +177,7 @@ For complete technical details, see:
 
 ## Testing
 
-126 tests covering unit, integration, adversarial, property-based (Hypothesis), and migration cases.
+128 automated tests covering unit, integration, adversarial, property-based (Hypothesis), and migration cases.
 
 
 ```bash
@@ -188,6 +188,22 @@ CRYPTOFLEX_DISABLE_PQC=1 pytest -v
 
 # End-to-end verification script:
 python verify_local.py
+```
+
+### Validation Results
+
+CryptoFlex includes automated tests covering cryptographic operations, policy enforcement, header validation, keystore handling, streaming integrity, adversarial cases, and integration behavior. The following visualization reflects the current locally executed validation results.
+
+<p align="center">
+  <img src="docs/results/validation-results.svg" alt="CryptoFlex Test and Verification Results" width="720">
+</p>
+
+> Test results indicate implementation behavior under the tested cases; they do not constitute a cryptographic security proof or independent security audit.
+
+To regenerate this graph from the actual test suite:
+
+```bash
+python scripts/generate_validation_graph.py
 ```
 
 ---
