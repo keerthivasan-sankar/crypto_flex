@@ -53,7 +53,7 @@ numbers** that don't necessarily move together:
 - **Stream Sanity Bounds**: Enforced `MAX_CHUNK_SIZE` (9 MB) and `MAX_HEADER_SIZE` (64 KB) in `streaming.py` to prevent stream buffer crashes and unreadable files.
 
 ### Added
-- **Ephemeral Forward-Secret Messaging**: `cryptoflex.ephemeral` module providing `ephemeral_encrypt()`, `ephemeral_decrypt()`, and `WireMessage` dataclass. Fresh root keys are generated and discarded per call via direct encapsulation.
+- **Ephemeral Messaging (Per-Message Ephemeral Keying)**: `cryptoflex.ephemeral` module providing `ephemeral_encrypt()`, `ephemeral_decrypt()`, and `WireMessage` dataclass. Fresh sender-side ephemeral key material is generated and discarded per call. This does **not** provide full forward secrecy against later compromise of the recipient's long-term private key.
 - **Property-Based Header Fuzzing**: `tests/test_fuzz_header.py` with `hypothesis` strategy testing 200+ byte mutations to verify `CryptoflexHeader.from_bytes()` raises only `HeaderParseError`.
 - **12 Ephemeral Messaging Tests**: `tests/test_ephemeral.py` covering round-trips, uniqueness, tampering, wrong keys, downgrade prevention, empty/large payloads, and multi-message independence.
 
