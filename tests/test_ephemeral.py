@@ -1,5 +1,5 @@
 """
-Tests for cryptoflex.ephemeral — forward-secret messaging mode.
+Tests for cryptoflex.ephemeral — ephemeral messaging (per-message ephemeral keying).
 
 12 tests covering:
   - Basic round-trip (classical & hybrid)
