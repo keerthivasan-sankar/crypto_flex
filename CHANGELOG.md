@@ -20,6 +20,13 @@ numbers** that don't necessarily move together:
 - **Strict Keystore Integrity**: `export_keyset_bytes` performs structural consistency checks before writing to disk. `import_keyset_bytes` strictly validates base64 key payloads and `profile_id` presence in `PROFILES`.
 - **CLI Safety**: Added path aliasing checks to `cryptoflex encrypt/decrypt/migrate` to prevent accidental destructive overwrites if `--in` and `--out` resolve to the same file.
 
+### Release Hardening & Verification
+- **Dependency Security Floor**: Raised `cryptography` dependency baseline to `>=50.0.0,<51.0.0`.
+- **CI Verification**: Aligned minimum-version compatibility verification to `cryptography==50.0.0`.
+- **Validation Evidence**: Confirmed 128 automated tests passing and 10/10 `verify_local.py` checks passing.
+- **Build Readiness**: Successfully verified package build producing sdist and wheel without environmental bypasses.
+- **Documentation Alignment**: Re-aligned repository to honest "Release Candidate" status, preserving research-prototype positioning and existing security hardening restrictions.
+
 ## [0.5.1] - 2026-09-08
 
 ### Security Hardening (OQS Review Remediation Phase A - Round 1)
