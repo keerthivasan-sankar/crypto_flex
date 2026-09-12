@@ -190,6 +190,9 @@ class PQCSource(SecuritySource):
         self.algorithm_id = kem_name.lower().replace("-", "")
 
     def is_available(self) -> bool:
+        # Respect explicit disable flag
+        if os.getenv("CRYPTOFLEX_DISABLE_PQC") == "1":
+            return False
         if oqs is None:
             return False
         try:
@@ -248,6 +251,14 @@ class PQCSource(SecuritySource):
 
     def deserialize_private(self, data: bytes) -> object:
         self._require_available()
+        # Validate expected secret key length if known
+        dummy_kem = oqs.KeyEncapsulation(self.kem_name)
+        expected_len = dummy_kem.details.get("length_secret_key")
+        dummy_kem.free()
+        if expected_len is not None and len(data) != expected_len:
+            raise ValueError(
+                f"Invalid private key length for {self.kem_name}: expected {expected_len}, got {len(data)}"
+            )
         return oqs.KeyEncapsulation(self.kem_name, secret_key=data)
 
 
