@@ -1,0 +1,2 @@
+51a1fce5096c69d15054489ead335aad38ece142ea09ed1f1880885e04907caa  cryptoflex-0.5.2-py3-none-any.whl
+f00d5b649e74bc5c42c97a6f39c59ee6a097fb0eb061d8061e2cda47d25d278e  cryptoflex-0.5.2.tar.gz
