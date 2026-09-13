@@ -9,6 +9,7 @@ on:
 permissions:
   contents: read
   id-token: write  # needed for provenance attestation
+  attestations: write
 
 jobs:
   build_package:
