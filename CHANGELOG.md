@@ -14,7 +14,7 @@ numbers** that don't necessarily move together:
 
 ## [0.5.2] - Release Candidate
 
-### Security Hardening (OQS Review Remediation Phase A - Round 2)
+### Fixes for community feedback (Discussion #2534) - Round 2
 - **Authenticated Stream Framing**: Completely rewrote the `cryptoflex.streaming` wire format. Every frame is now strongly typed (`DATA` or `FINAL`). Stream termination is enforced via a mandatory AES-GCM authenticated `FINAL` frame, fixing the `CRYPTO-STREAM-01` truncation vulnerability. Legacy streams using the unauthenticated `0x00000000` marker are rejected.
 - **Strict Policy Enforcement**: `PolicyEngine` now explicitly returns `degraded=True` when a profile contains mixed `approved` and `deprecated` components. Any component marked `disallowed` or `unknown` causes immediate hard rejection.
 - **Strict Keystore Integrity**: `export_keyset_bytes` performs structural consistency checks before writing to disk. `import_keyset_bytes` strictly validates base64 key payloads and `profile_id` presence in `PROFILES`.
