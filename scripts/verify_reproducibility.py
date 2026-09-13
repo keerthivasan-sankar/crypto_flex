@@ -49,20 +49,29 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 def get_build_tool_versions(python_executable: str):
-    """Return exact versions of build, setuptools and wheel for a given Python.
-    The function queries the interpreter's pip.
-    """
-    cmd = [python_executable, '-m', 'pip', 'show', 'build', 'setuptools', 'wheel']
-    rc, out, err = run_cmd(cmd)
+    """Return exact versions of build, setuptools and wheel for a given Python."""
     versions = {}
-    if rc == 0:
-        for line in out.splitlines():
-            if line.startswith('Name:'):
-                name = line.split(':', 1)[1].strip()
-            if line.startswith('Version:'):
-                ver = line.split(':', 1)[1].strip()
+
+    for pkg in ['build', 'setuptools', 'wheel']:
+        rc, out, err = run_cmd(
+            [python_executable, '-m', 'pip', 'show', pkg]
+        )
+
+        if rc == 0:
+            name = ''
+            ver = ''
+
+            for line in out.splitlines():
+                if line.startswith('Name:'):
+                    name = line.split(':', 1)[1].strip()
+                elif line.startswith('Version:'):
+                    ver = line.split(':', 1)[1].strip()
+
+            if name and ver:
                 versions[name] = ver
+
     return versions
+
 
 # ---------------------------------------------------------------------------
 # Main reproducibility procedure
