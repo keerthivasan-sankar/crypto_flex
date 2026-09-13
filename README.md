@@ -4,6 +4,7 @@
 [![build](https://github.com/keerthivasan-sankar/crypto_flex/actions/workflows/build-wheels.yml/badge.svg)](https://github.com/keerthivasan-sankar/crypto_flex/actions/workflows/build-wheels.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+
 Version: 0.5.2
 Status: RELEASE CANDIDATE / research prototype
 
