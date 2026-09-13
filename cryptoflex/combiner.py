@@ -7,13 +7,11 @@ into a single root key.
 
 Security property (informal)
 ------------------------------
-The intended design goal is that compromise of one component does not by
-itself reveal the combined key when another component remains secure.
-This has not been independently proven for the CryptoFlex construction.
+The combiner is a project-specific construction intended to combine component
+KEM secrets using explicit domain separation and unambiguous encoding.
+It has not received a formal security proof or independent cryptographic review.
 
-No independent formal security proof exists for the complete CryptoFlex
-composition.  The construction is a CryptoFlex-specific implementation
-and must not be confused with any formally standardized protocol.
+The construction must not be confused with any formally standardized protocol.
 
 Combiner design
 -----------------

@@ -75,13 +75,13 @@ def main():
     if rc != 0:
         print('UNABLE_TO_VERIFY')
         print('Could not determine current commit SHA')
-        sys.exit(0)
+        sys.exit(1)
     # Also obtain the commit timestamp (Unix epoch) for reproducible archives
     rc, commit_ts, _ = run_cmd(['git', 'log', '-1', '--format=%ct', commit_sha], cwd=str(repo_root))
     if rc != 0:
         print('UNABLE_TO_VERIFY')
         print('Could not determine commit timestamp')
-        sys.exit(0)
+        sys.exit(1)
 
     # Gather exact build tool versions from the host interpreter
     host_python = sys.executable
@@ -91,7 +91,7 @@ def main():
     if missing:
         print('UNABLE_TO_VERIFY')
         print(f'Missing required build tools: {missing}')
-        sys.exit(0)
+        sys.exit(1)
 
     # Prepare two independent temporary build environments
     results = []
@@ -128,7 +128,7 @@ def main():
         except Exception as e:
             print('UNABLE_TO_VERIFY')
             print(f'Error during build {i+1}: {e}')
-            sys.exit(0)
+            sys.exit(1)
 
     # Compare the two results
     if results[0]['hash'] == results[1]['hash'] and results[0]['size'] == results[1]['size']:
@@ -143,14 +143,17 @@ def main():
             print(f'Build {i} timestamp: {ts}')
 
     # Emit a short JSON summary for downstream consumption
+    outcome = 'REPRODUCIBLE' if results[0]['hash'] == results[1]['hash'] else 'NON_REPRODUCIBLE'
     summary = {
         'commit_sha': commit_sha,
         'tool_versions': tool_versions,
         'builds': results,
-        'outcome': 'REPRODUCIBLE' if results[0]['hash'] == results[1]['hash'] else 'NON_REPRODUCIBLE',
+        'outcome': outcome,
     }
     print('\n---SUMMARY---')
     print(json.dumps(summary, indent=2))
+    if outcome != 'REPRODUCIBLE':
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()

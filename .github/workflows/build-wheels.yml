@@ -8,11 +8,12 @@ on:
 
 permissions:
   contents: read
+  id-token: write  # needed for provenance attestation
 
 jobs:
   build_package:
     name: Build pure-Python wheel and sdist
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
@@ -28,8 +29,21 @@ jobs:
           pip install build==1.6.0
           python -m build --sdist --wheel --outdir dist/
 
+      - name: Verify Reproducibility
+        run: python scripts/verify_reproducibility.py
+
+      - name: Generate SHA256SUMS.txt
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+
       - name: Upload Artifacts
         uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.4.0
         with:
           name: python-package-distributions
           path: ./dist/*
+
+      - name: Attest provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: ./dist/*

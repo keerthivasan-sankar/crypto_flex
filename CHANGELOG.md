@@ -14,6 +14,11 @@ numbers** that don't necessarily move together:
 
 ## [0.5.2] - Release Candidate
 
+### PR 2 Targeted Security Hardening (Discussion #2534 Remediation)
+- **Review Remediation**: Addressed community feedback and reviewer comments from Mahidul Haque and Michael Baentsch (dated 6 Sept and 11 Sept 2026).
+- **CI Hardening**: Restored exact SHA-pinning for GitHub Actions (`checkout`, `setup-python`, `upload-artifact`). Introduced genuine two-build reproducibility verification failing closed on divergence, and generated `SHA256SUMS.txt`. Configured provenance attestation (`actions/attest-build-provenance@v1`). Remote execution of provenance generation is not verified.
+- **Claim Accuracy**: Softened combiner documentation to clarify it is a project-specific construction without formal proof. Conducted repository-wide timing-language audit, correctly classifying limitations and softening unsupported guarantees (e.g., removing absolute side-channel resistance claims).
+
 ### Fixes for community feedback (Discussion #2534) - Round 2
 - **Authenticated Stream Framing**: Completely rewrote the `cryptoflex.streaming` wire format. Every frame is now strongly typed (`DATA` or `FINAL`). Stream termination is enforced via a mandatory AES-GCM authenticated `FINAL` frame, fixing the `CRYPTO-STREAM-01` truncation vulnerability. Legacy streams using the unauthenticated `0x00000000` marker are rejected.
 - **Strict Policy Enforcement**: `PolicyEngine` now explicitly returns `degraded=True` when a profile contains mixed `approved` and `deprecated` components. Any component marked `disallowed` or `unknown` causes immediate hard rejection.
@@ -77,7 +82,7 @@ numbers** that don't necessarily move together:
 - **Header v2 Format**: Added 12-byte random nonce to header; full header byte string authenticated as AES-256-GCM Associated Data (AAD).
 - **Canonical Combiner**: Rewrote `combiner.py` to use length-prefixed injective encoding with domain separation context string (`b"cryptoflex-hybrid-kem-combiner-v2"`) and HKDF-SHA384.
 - **Explicit Downgrade Protection**: Added `strength_level` integers to profiles and `min_profile` parameters to `decrypt()`, raising `DowngradeError` prior to decapsulation.
-- **Uniform Error Boundaries**: All cryptographic failures collapse into generic `DecryptionError` to eliminate timing and error side-channels.
+- **Uniform Error Boundaries**: All cryptographic failures collapse into generic `DecryptionError` to reduce error-type disclosure. No constant-time guarantee is made at the Python/liboqs integration layer.
 
 ## [0.1.0] - initial release
 

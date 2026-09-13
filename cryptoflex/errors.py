@@ -39,6 +39,5 @@ class DowngradeError(DecryptionError):
     """The header's recorded profile is weaker than the caller's stated
     minimum accepted profile.
 
-    Raised BEFORE any cryptographic operation is attempted, so no timing
-    side-channel exists between this and a genuine decryption failure.
+    Raised BEFORE any cryptographic operation is attempted.
     """
