@@ -10,7 +10,7 @@ A local-first crypto-agility policy engine for Python.
 
 `cryptoflex` sits between your application and its cryptographic primitives. It selects the strongest combination of classical (X25519) and post-quantum (ML-KEM via [liboqs](https://github.com/open-quantum-safe/liboqs)) algorithms that the current machine can support, then hands you a single root key — without ever making a network call.
 
-> **Status:** unaudited research prototype. See [`TECHNICAL_REVIEW_1.md`](TECHNICAL_REVIEW_1.md) for a full self-assessment and what that means in practice before using this for anything sensitive.
+> **Status:** an unaudited research prototype / security-hardened research prototype prepared for independent security review. See [`TECHNICAL_REVIEW_1.md`](TECHNICAL_REVIEW_1.md) for a full self-assessment and what that means in practice before using this for anything sensitive.
 
 ---
 
@@ -178,7 +178,7 @@ For complete technical details, see:
 
 ## Testing
 
-128 automated tests covering unit, integration, adversarial, property-based (Hypothesis), and migration cases.
+138 automated tests covering unit, integration, adversarial, property-based (Hypothesis), and migration cases.
 
 
 ```bash
@@ -221,3 +221,11 @@ The original architecture and threat model of the policy engine are described in
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## Documentation Links
+
+- [Security Hardening Evidence](SECURITY_HARDENING.md)
+- [Security Policy](security.md)
+- [Changelog](CHANGELOG.md)
+- [Format & Cryptographic Specification](docs/FORMAT_SPECIFICATION.md)
+- [Threat Model & Security Analysis](docs/THREAT_MODEL.md)
