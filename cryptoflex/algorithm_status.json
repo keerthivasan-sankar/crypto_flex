@@ -1,6 +1,6 @@
 {
   "table_version": "2026.08.1",
-  "note": "Bundled locally with the package release. Updated by maintainers as new NIST/CNSA guidance is published. No network calls are made to fetch this - update by upgrading the cryptoflex package.",
+  "note": "Bundled locally with the package release. The 'approved' status indicates approval under CryptoFlex's bundled local algorithm policy only; it does not indicate government, regulatory, standards-body, or independent third-party certification. Updated by maintainers as new guidance is published. No network calls are made.",
   "algorithms": {
     "x25519": {
       "status": "approved",

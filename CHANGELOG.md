@@ -28,7 +28,7 @@ numbers** that don't necessarily move together:
 ### Release Hardening & Verification
 - **Dependency Security Floor**: Raised `cryptography` dependency baseline to `>=50.0.0,<51.0.0`.
 - **CI Verification**: Aligned minimum-version compatibility verification to `cryptography==50.0.0`.
-- **Validation Evidence**: Confirmed 128 automated tests passing and 10/10 `verify_local.py` checks passing.
+- **Validation Evidence**: Confirmed 138 automated tests passing and 10/10 `verify_local.py` checks passing.
 - **Build Readiness**: Successfully verified package build producing sdist and wheel without environmental bypasses.
 - **Documentation Alignment**: Re-aligned repository to honest "Release Candidate" status, preserving research-prototype positioning and existing security hardening restrictions.
 

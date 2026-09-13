@@ -1,6 +1,7 @@
 # cryptoflex
 
 [![tests](https://github.com/keerthivasan-sankar/crypto_flex/actions/workflows/tests.yml/badge.svg)](https://github.com/keerthivasan-sankar/crypto_flex/actions/workflows/tests.yml)
+[![build](https://github.com/keerthivasan-sankar/crypto_flex/actions/workflows/build-wheels.yml/badge.svg)](https://github.com/keerthivasan-sankar/crypto_flex/actions/workflows/build-wheels.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 Version: 0.5.2
@@ -10,7 +11,7 @@ A local-first crypto-agility policy engine for Python.
 
 `cryptoflex` sits between your application and its cryptographic primitives. It selects the strongest combination of classical (X25519) and post-quantum (ML-KEM via [liboqs](https://github.com/open-quantum-safe/liboqs)) algorithms that the current machine can support, then hands you a single root key — without ever making a network call.
 
-> **Status:** an unaudited research prototype / security-hardened research prototype prepared for independent security review. See [`TECHNICAL_REVIEW_1.md`](TECHNICAL_REVIEW_1.md) for a full self-assessment and what that means in practice before using this for anything sensitive.
+> **Status:** an unaudited research prototype / security-hardened research prototype prepared for independent security review. Note that [`TECHNICAL_REVIEW_1.md`](TECHNICAL_REVIEW_1.md) is a historical v0.1.0 AI-assisted self-review, not the current security scorecard. Current security posture, format specification, and threat model are documented in [`SECURITY_HARDENING.md`](SECURITY_HARDENING.md), [`docs/FORMAT_SPECIFICATION.md`](docs/FORMAT_SPECIFICATION.md), and [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).
 
 ---
 
