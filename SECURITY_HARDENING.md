@@ -11,6 +11,6 @@ This document records the hardening actions performed for CryptoFlex v0.5.2.
 
 ## Documentation Links
 - README.md now links to this file.
-- SECURITY.md now links to this file.
+- security.md now links to this file.
 
 *No changes were made to cryptographic implementations or security claims.*

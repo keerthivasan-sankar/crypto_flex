@@ -3,7 +3,7 @@
 Utility to test reproducible builds of the CryptoFlex package.
 
 It performs two independent builds from the *same* Git revision using
-separate temporary source copies and isolated virtual environments.
+separate temporary source copies and host Python build execution (--no-isolation).
 
 The script reports one of three outcomes:
   * REPRODUCIBLE – both wheel files are byte‑for‑byte identical.

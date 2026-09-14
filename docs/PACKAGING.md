@@ -22,7 +22,7 @@ The library does not contain any native C extensions itself. It wraps the standa
 *   **Security Disclaimer:** Falling back to `classical_only` mode provides classical X25519 security only. It does **NOT** provide post-quantum security and must not be treated as equivalent to hybrid PQC protection against quantum eavesdroppers (Harvest-Now-Decrypt-Later).
 
 ### 1.3 Automated Build Pipeline
-Our GitHub Actions CI pipeline (`.github/workflows/build-wheels.yml`) automatically builds and publishes pure-Python distribution artifacts for each release tag:
+Our GitHub Actions CI pipeline (`.github/workflows/build-wheels.yml`) automatically builds and uploads pure-Python distribution artifacts as workflow artifacts for each release tag:
 
 ```bash
 python -m build --sdist --wheel --outdir dist/
@@ -30,25 +30,14 @@ python -m build --sdist --wheel --outdir dist/
 
 ---
 
-## 2. Planned Supply Chain Security Roadmap
+## 2. Supply Chain Security Features & Roadmap
 
-The following supply-chain transparency and security features are planned for future, post-audit releases:
+### 2.1 Implemented Supply Chain Controls
+*   **Reproducibility Verification:** Automated double-build reproducibility checking via `scripts/verify_reproducibility.py`.
+*   **SHA-256 Checksum Manifests:** `SHA256SUMS.txt` is generated in `dist/` for all release artifacts.
+*   **Software Bill of Materials (SBOM):** Release CI (`.github/workflows/build-wheels.yml`) automatically generates a CycloneDX 1.4 JSON SBOM (`dist/SBOM.json`) using `cyclonedx-bom==4.1.2`, covering the Python build environment boundary.
+*   **Build Provenance Attestation:** Automated GitHub Actions build provenance attestation via `actions/attest-build-provenance`.
 
-### 2.1 Platform-Specific Native Bundles
-If enterprise demand requires it, future releases may explore distributing fully self-contained binary wheels that embed pre-compiled `liboqs` shared objects for major target architectures (using `cibuildwheel`), removing the need for external native provisioning.
-
-### 2.2 Software Bill of Materials (SBOM)
-Release CI (`.github/workflows/build-wheels.yml`) automatically generates a CycloneDX 1.4 JSON SBOM (`dist/SBOM.json`) using `cyclonedx-bom==4.1.2`. The generated SBOM is published alongside release artifacts and included in `SHA256SUMS.txt` checksum coverage. The SBOM documents the Python dependency and build environment boundary. Native `liboqs` remains an external native deployment dependency and is not bundled in the pure-Python wheel. SBOM information provides supply-chain component visibility and is not equivalent to a vulnerability audit or security certification.
-
-### 2.3 Artifact Cryptographic Hashes & Signatures
-Future wheels will be accompanied by SHA-256 checksum manifests signed via Cosign/GPG to enable reproducible double-build verification and Sigstore provenance:
-
-```bash
-# Planned verification workflow:
-sha256sum -c SHA256SUMS
-
-cosign verify-blob \
-  --certificate github-actions-cert.pem \
-  --signature SHA256SUMS.sig \
-  SHA256SUMS
-```
+### 2.2 Future / Planned Enhancements
+*   **Platform-Specific Native Bundles:** If enterprise demand requires it, future releases may explore distributing self-contained binary wheels embedding pre-compiled `liboqs` shared objects (using `cibuildwheel`).
+*   **Cosign / Sigstore Key Signing:** External GPG/Cosign signing of checksum manifests for PyPI/Sigstore distribution.

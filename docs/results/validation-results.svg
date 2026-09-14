@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="720" height="794" viewBox="0 0 720 794">
   <rect width="720" height="794" rx="12" fill="#0d1117"/>
   <text x="360" y="36" text-anchor="middle" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="20" font-weight="700" fill="#e6edf3">CryptoFlex — Test &amp; Verification Results</text>
-  <text x="360" y="60" text-anchor="middle" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="13" fill="#8b949e">v0.5.2  ·  2026-09-11</text>
+  <text x="360" y="60" text-anchor="middle" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="13" fill="#8b949e">v0.5.2  ·  2026-09-14</text>
   <text x="360" y="78" text-anchor="middle" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="11" fill="#6e7681">Unaudited research prototype — results do not constitute a security proof</text>
   <rect x="32" y="90" width="320" height="88" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1"/>
   <text x="192" y="114" text-anchor="middle" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="12" font-weight="600" fill="#8b949e">Automated Tests (pytest)</text>

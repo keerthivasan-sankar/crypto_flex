@@ -10,8 +10,8 @@
 
 ## 1. Scope & Distribution Boundary
 
-* **Included in CI SBOM (`dist/SBOM.json`):** All direct and transitive Python runtime and build dependencies in the build environment (`cryptography`, `liboqs-python`, `setuptools`, `wheel`, `build`, `cyclonedx-bom`).
-* **Excluded from Python Package / SBOM:** Native C system libraries (`liboqs`, system `OpenSSL`). Native `liboqs` is an external deployment dependency. In CI, real PQC verification builds native `liboqs` pinned to tag `0.16.0` (commit `5a1a854b0dc9f2141bdc771c555ee60c37950183`).
+* **Included in CI SBOM (`dist/SBOM.json`):** Python build environment dependencies present during artifact generation (`pip`, `build`, `setuptools`, `wheel`, `cyclonedx-bom`).
+* **Excluded from Python Package / Release SBOM:** Optional or external dependencies not installed in the build runner environment (such as `liboqs-python` and native `liboqs` C shared objects). Native `liboqs` is an external deployment requirement. In CI, real PQC verification (`tests.yml`) builds native `liboqs` pinned to tag `0.16.0` (commit `5a1a854b0dc9f2141bdc771c555ee60c37950183`).
 
 ## 2. Direct Python Dependencies
 

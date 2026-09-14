@@ -33,7 +33,7 @@ All multi-byte integers are encoded in **big-endian (network) byte order**.
 
 ## 2. Hybrid Key Combiner (HKDF-SHA384)
 
-The hybrid root key is derived using **HKDF-SHA384** (RFC 5869) over all component shared secrets and ciphertexts, following the injectivity requirements of RFC 9954.
+The hybrid root key is derived using a project-specific construction inspired by hybrid KEM combiner literature, using **HKDF-SHA384** (RFC 5869) over all component shared secrets and ciphertexts with unambiguous length-prefixed encoding.
 
 ### 2.1 Input Keying Material (IKM)
 
@@ -211,7 +211,7 @@ $$\text{RootKey} = \text{HKDF-Expand}(\text{PRK}, \text{info}, 32)$$
 *Rationale Sketch*:  
 If $S_k$ provides sufficient min-entropy given $C_k$, the concatenated string $\text{IKM} = \phi(\mathbf{S})$ should carry that entropy. Under the Dual-PRF property of HKDF-Extract (RFC 5869 / Krawczyk 2010), $\text{HKDF-Extract}(0^{48}, \text{IKM})$ is expected to yield a pseudorandom key $\text{PRK}$. Expanding $\text{PRK}$ with context $\text{info}$ via HKDF-Expand then preserves pseudorandomness for $\text{RootKey}$. Note: this is an expected property, not a formal security proof.
 
-### 6.3 Design Rationale: Injectivity of Pre-fixed Formatting (RFC 9954)
+### 6.3 Design Rationale: Injectivity of Pre-fixed Formatting (Unambiguous Encoding)
 
 > **Design Rationale (Unambiguous Encoding)**:  
 > Current fixed-length shared-secret vectors are unambiguous under direct concatenation.
