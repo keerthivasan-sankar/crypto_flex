@@ -5,7 +5,7 @@
   <text x="360" y="78" text-anchor="middle" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="11" fill="#6e7681">Unaudited research prototype — results do not constitute a security proof</text>
   <rect x="32" y="90" width="320" height="88" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1"/>
   <text x="192" y="114" text-anchor="middle" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="12" font-weight="600" fill="#8b949e">Automated Tests (pytest)</text>
-  <text x="192" y="142" text-anchor="middle" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="26" font-weight="700" fill="#3fb950">128 / 128</text>
+  <text x="192" y="142" text-anchor="middle" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="26" font-weight="700" fill="#3fb950">138 / 138</text>
   <text x="192" y="162" text-anchor="middle" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="11" font-weight="600" fill="#3fb950">ALL PASSED</text>
   <rect x="368" y="90" width="320" height="88" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1"/>
   <text x="528" y="114" text-anchor="middle" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="12" font-weight="600" fill="#8b949e">Local Verification (verify_local.py)</text>
