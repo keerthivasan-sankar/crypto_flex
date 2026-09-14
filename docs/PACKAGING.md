@@ -38,7 +38,7 @@ The following supply-chain transparency and security features are planned for fu
 If enterprise demand requires it, future releases may explore distributing fully self-contained binary wheels that embed pre-compiled `liboqs` shared objects for major target architectures (using `cibuildwheel`), removing the need for external native provisioning.
 
 ### 2.2 Software Bill of Materials (SBOM)
-We currently provide a static `docs/SBOM.md` reference document. In the future, this will be automated to generate an exact, dynamically-resolved CycloneDX/SPDX SBOM detailing all transitive Python dependencies and native cryptographic primitives for every build environment.
+Release CI (`.github/workflows/build-wheels.yml`) automatically generates a CycloneDX 1.4 JSON SBOM (`dist/SBOM.json`) using `cyclonedx-bom==4.1.2`. The generated SBOM is published alongside release artifacts and included in `SHA256SUMS.txt` checksum coverage. The SBOM documents the Python dependency and build environment boundary. Native `liboqs` remains an external native deployment dependency and is not bundled in the pure-Python wheel. SBOM information provides supply-chain component visibility and is not equivalent to a vulnerability audit or security certification.
 
 ### 2.3 Artifact Cryptographic Hashes & Signatures
 Future wheels will be accompanied by SHA-256 checksum manifests signed via Cosign/GPG to enable reproducible double-build verification and Sigstore provenance:
