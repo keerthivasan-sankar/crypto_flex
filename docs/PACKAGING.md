@@ -10,14 +10,19 @@ This document specifies the packaging strategy and supply chain security roadmap
 
 The library does not contain any native C extensions itself. It wraps the standard `cryptography` package for classical algorithms, and optionally interfaces with `liboqs-python` for post-quantum cryptography.
 
-### 1.1 Dependency Resolution
+### 1.1 Dependency & Packaging Model
+*   **Pure Python Distribution:** `cryptoflex` is published as a universal pure-Python wheel (`py3-none-any.whl`) and source distribution (`sdist`). It contains no compiled C extensions.
 *   **Classical Mode (Default):** Requires only the `cryptography` package.
-*   **Post-Quantum Mode:** Requires the optional `[pqc]` extra, which installs `liboqs-python`. 
+*   **Post-Quantum Mode:** Requires the `[pqc]` extra, which installs `liboqs-python`.
+*   **Native C Library Dependency:** `liboqs-python` requires the native `liboqs` C library. Provisioning `liboqs` shared objects on the host OS is an external deployment requirement.
+*   **CI Validation:** In CI (`.github/workflows/tests.yml`), real PQC testing builds native `liboqs` pinned to tag `0.16.0` (commit `5a1a854b0dc9f2141bdc771c555ee60c37950183`).
 
-**Important:** The `liboqs-python` package itself relies on a native C library (`liboqs`). Provisioning the native `liboqs` shared objects for your specific platform/OS is treated as an external operational requirement for now.
+### 1.2 Graceful Degradation & Security Posture
+*   **Fallback Behavior:** If `liboqs` is unavailable or disabled via `CRYPTOFLEX_DISABLE_PQC=1`, `PQCSource.is_available()` returns `False`. The `PolicyEngine` automatically degrades to `classical_only` profile selection.
+*   **Security Disclaimer:** Falling back to `classical_only` mode provides classical X25519 security only. It does **NOT** provide post-quantum security and must not be treated as equivalent to hybrid PQC protection against quantum eavesdroppers (Harvest-Now-Decrypt-Later).
 
-### 1.2 Automated Build Pipeline
-Our GitHub Actions CI pipeline (`.github/workflows/build-wheels.yml`) automatically builds and publishes the pure-Python distribution artifacts for each release tag using standard Python build tools:
+### 1.3 Automated Build Pipeline
+Our GitHub Actions CI pipeline (`.github/workflows/build-wheels.yml`) automatically builds and publishes pure-Python distribution artifacts for each release tag:
 
 ```bash
 python -m build --sdist --wheel --outdir dist/

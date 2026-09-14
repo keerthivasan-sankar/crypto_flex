@@ -27,11 +27,16 @@ jobs:
       - name: Build sdist and wheel
         run: |
           python -m pip install --upgrade pip==26.2.1
-          pip install build==1.6.0 setuptools wheel
+          pip install build==1.6.0 setuptools==84.0.0 wheel==0.48.0
           python -m build --sdist --wheel --outdir dist/
 
       - name: Verify Reproducibility
         run: python scripts/verify_reproducibility.py
+
+      - name: Generate CycloneDX SBOM
+        run: |
+          pip install cyclonedx-bom==4.1.2
+          cyclonedx-py environment --outfile dist/SBOM.json
 
       - name: Generate SHA256SUMS.txt
         run: |
@@ -45,6 +50,6 @@ jobs:
           path: ./dist/*
 
       - name: Attest provenance
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@92c65d2898f1f53cfdc910b962cecff86e7f8fcc # v1.4.1
         with:
           subject-path: ./dist/*

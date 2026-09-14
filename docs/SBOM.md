@@ -5,24 +5,29 @@
 **Date:** September 2026
 
 > [!NOTE]
-> **Static Reference SBOM**
-> This document is a static reference describing the intended dependencies, versions, and cryptographic primitives of the project. It is not an exact, dynamically resolved build SBOM (which would reflect precise, pinned dependency trees of a specific build environment).
+> **SBOM Generation & Reference Document**
+> This document describes the dependency structure and cryptographic primitives of `cryptoflex`. An automated CycloneDX 1.4 JSON SBOM (`dist/SBOM.json`) is generated during release CI builds using `cyclonedx-bom==4.1.2`, hashed in `dist/SHA256SUMS.txt`, and published alongside release artifacts.
 
-## 1. Direct Python Dependencies
+## 1. Scope & Distribution Boundary
+
+* **Included in CI SBOM (`dist/SBOM.json`):** All direct and transitive Python runtime and build dependencies in the build environment (`cryptography`, `liboqs-python`, `setuptools`, `wheel`, `build`, `cyclonedx-bom`).
+* **Excluded from Python Package / SBOM:** Native C system libraries (`liboqs`, system `OpenSSL`). Native `liboqs` is an external deployment dependency. In CI, real PQC verification builds native `liboqs` pinned to tag `0.16.0` (commit `5a1a854b0dc9f2141bdc771c555ee60c37950183`).
+
+## 2. Direct Python Dependencies
 
 | Package | Version Range | Purpose |
 | :--- | :--- | :--- |
 | `cryptography` | `>=50.0.0,<51.0.0` | AES-256-GCM, X25519 (Classical KEM), HKDF-SHA384, Scrypt, Argon2id |
 | `liboqs-python` | `>=0.16.0,<0.17.0` | Python bindings for liboqs (ML-KEM) |
 
-## 2. Underlying Native C Libraries
+## 3. Underlying Native C Libraries
 
 | Library | Version | Purpose |
 | :--- | :--- | :--- |
-| `liboqs` | `0.16.0` (Tested Reference) | Native C implementation of ML-KEM-768 and ML-KEM-1024 |
+| `liboqs` | `0.16.0` (Pinned CI Reference `5a1a854...`) | Native C implementation of ML-KEM-768 and ML-KEM-1024 |
 | `OpenSSL` | `>=3.0` | Native backend for the `cryptography` package |
 
-## 3. Cryptographic Algorithms Used
+## 4. Cryptographic Algorithms Used
 
 | Primitive Type | Algorithm | Context |
 | :--- | :--- | :--- |
@@ -32,5 +37,3 @@
 | **AEAD** | AES-256-GCM | Encrypts and authenticates file payloads and headers |
 | **KDF (Keystore)** | Argon2id (default: memory_cost=32768, iterations=3, lanes=1) / Scrypt | Password derivation for at-rest keystore wrapping |
 | **PRNG** | `os.urandom()` / `/dev/urandom` | Nonce generation and ephemeral keypair entropy |
-
-*Note: This static SBOM is provided for reference. Future reviewed releases will aim to generate these dynamically as part of the artifact build pipeline.*

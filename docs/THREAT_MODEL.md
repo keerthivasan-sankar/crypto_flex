@@ -72,10 +72,12 @@ This document formalizes the security goals, attacker models, cryptographic inva
 
 ## 3. Known Operational Limitations & Out-of-Scope Risks
 
-1. **Python Heap Management & Garbage Collection**:
-   - In C Python, immutable `bytes` objects cannot be zeroized in-place natively without unsafe interpreter hacks. While `del` is invoked eagerly, actual memory release depends on Python's garbage collector.
-   - Operating system swap file locking (`mlock`) is not yet enforced at the Python level.
-2. **Side-Channel Resistance Limitations**:
-   - `cryptoflex` wraps underlying C libraries. It does not provide constant-time execution at the Python layer, and any microarchitectural side-channels in the underlying C/Assembly implementations are out of scope.
-3. **Local Machine Compromise**:
-   - If an attacker has `root` / administrator access to the machine while `cryptoflex` is running, they can read memory directly via `/proc/self/mem` or OS debugging interfaces.
+1. **Python Heap Management & Memory Security**:
+   - `cryptoflex` implements best-effort zeroization (`ctypes.memset`) on mutable buffers (`bytearray`/`memoryview`).
+   - In CPython, immutable `bytes` objects (such as raw keys returned by underlying C extensions) cannot be zeroized in-place natively without unsafe interpreter hacks.
+   - While `del` is invoked eagerly, actual memory release depends on Python's garbage collector, and transient copies may exist in memory managed by underlying C libraries (`liboqs` / `OpenSSL`).
+   - Operating system swap file locking (`mlock`) is not enforced at the Python level.
+2. **Side-Channel & Constant-Time Limitations**:
+   - `cryptoflex` wraps underlying Python and native C libraries. It does NOT claim constant-time execution or complete timing-side-channel resistance at the Python layer.
+3. **Deterministic Protocol Test Vectors**:
+   - Standardized deterministic test vectors verifying header serialization, HKDF combiner derivations, and X25519/mock-PQC encapsulation are defined in `tests/vectors/` and verified independently via `tests/test_vectors.py`.
