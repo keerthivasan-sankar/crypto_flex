@@ -1,7 +1,7 @@
 # Software Bill of Materials (SBOM)
 
 **Project:** `cryptoflex`
-**Version:** 0.5.2
+**Version:** 0.5.3
 **Date:** September 2026
 
 > [!NOTE]

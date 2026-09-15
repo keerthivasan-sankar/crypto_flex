@@ -42,7 +42,7 @@ from .sources import (
 from .streaming import decrypt_stream, encrypt_stream, migrate_stream
 from .utils import zeroize
 
-__version__ = "0.5.2"
+__version__ = "0.5.3"
 
 __all__ = [
     # high-level AEAD API (recommended for file encryption)
