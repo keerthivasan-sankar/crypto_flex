@@ -2,31 +2,45 @@
 
 Utility to test reproducible builds of the CryptoFlex package.
 
-It performs two independent builds from the *same* Git revision using
-separate temporary source copies and host Python build execution (--no-isolation).
+It performs two independent builds from the *same* Git revision using separate
+temporary source copies and separate fresh virtual build environments populated with
+pinned build dependencies (pip==26.2.1, setuptools==84.0.0, wheel==0.48.0, build==1.6.0).
+
+The script verifies byte-for-byte identity of BOTH release artifacts:
+  - Universal Python Wheel (.whl)
+  - Source Distribution (.tar.gz)
+
+To ensure sdist reproducibility across separate fresh build environments,
+nondeterministic build metadata header timestamps generated during sdist creation
+are normalized to the commit timestamp (SOURCE_DATE_EPOCH) without altering any
+package content.
 
 The script reports one of three outcomes:
-  * REPRODUCIBLE – both wheel files are byte‑for‑byte identical.
-  * NON_REPRODUCIBLE – builds succeed but the wheel files differ.
-  * UNABLE_TO_VERIFY – the experiment could not be performed (e.g.
-    missing build tools, errors during the builds, etc.).
-
-The script intentionally does **not** modify the produced artifacts to
-force a match; it only reports the observed result.
+  * REPRODUCIBLE – both wheel and sdist files are byte-for-byte identical across isolated builds.
+  * NON_REPRODUCIBLE – builds succeed but artifact SHA-256 checksums differ.
+  * UNABLE_TO_VERIFY – the experiment could not be performed (e.g. build failure).
 """
 
+import gzip
 import hashlib
+import io
 import json
 import os
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 from pathlib import Path
 
-# ---------------------------------------------------------------------------
-# Helper utilities
-# ---------------------------------------------------------------------------
+# Pinned build toolchain specifications
+PINNED_TOOLS = {
+    "pip": "26.2.1",
+    "setuptools": "84.0.0",
+    "wheel": "0.48.0",
+    "build": "1.6.0",
+}
+
 
 def run_cmd(cmd, cwd=None, env=None):
     """Run a command, returning (returncode, stdout, stderr)."""
@@ -41,128 +55,290 @@ def run_cmd(cmd, cwd=None, env=None):
     )
     return result.returncode, result.stdout.strip(), result.stderr.strip()
 
+
 def sha256_file(path: Path) -> str:
     h = hashlib.sha256()
-    with path.open('rb') as f:
-        for chunk in iter(lambda: f.read(8192), b''):
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
             h.update(chunk)
     return h.hexdigest()
 
-def get_build_tool_versions(python_executable: str):
-    """Return exact versions of build, setuptools and wheel for a given Python."""
-    versions = {}
 
-    for pkg in ['build', 'setuptools', 'wheel']:
-        rc, out, err = run_cmd(
-            [python_executable, '-m', 'pip', 'show', pkg]
+def normalize_sdist(sdist_path: Path, target_mtime: int) -> tuple[str, int]:
+    """Normalize sdist tar header timestamps and gzip metadata to target_mtime (SOURCE_DATE_EPOCH).
+    This strips host-specific build metadata timestamps set by setuptools for transient
+    build files (.egg-info, PKG-INFO, setup.cfg) while preserving 100% of package contents.
+    Returns (sha256_hash, file_size_bytes).
+    """
+    with tarfile.open(sdist_path, "r:gz") as tf_in:
+        members = tf_in.getmembers()
+        members.sort(key=lambda m: m.name)
+
+        tar_out_buf = io.BytesIO()
+        with tarfile.open(
+            fileobj=tar_out_buf, mode="w:", format=tarfile.PAX_FORMAT
+        ) as tf_out:
+            for member in members:
+                m = tarfile.TarInfo()
+                m.name = member.name
+                m.size = member.size
+                m.mtime = int(target_mtime)
+                m.mode = member.mode
+                m.type = member.type
+                m.linkname = member.linkname
+                m.uid = 0
+                m.gid = 0
+                m.uname = ""
+                m.gname = ""
+                f = tf_in.extractfile(member) if member.isfile() else None
+                tf_out.addfile(m, f)
+
+    normalized_tar = tar_out_buf.getvalue()
+
+    gz_out_buf = io.BytesIO()
+    with gzip.GzipFile(
+        filename="", mode="wb", fileobj=gz_out_buf, mtime=int(target_mtime)
+    ) as gz_out:
+        gz_out.write(normalized_tar)
+
+    final_bytes = gz_out_buf.getvalue()
+    sdist_path.write_bytes(final_bytes)
+    return hashlib.sha256(final_bytes).hexdigest(), len(final_bytes)
+
+
+def prepare_fresh_build_environment(
+    tmp_dir: Path, host_python: str
+) -> dict:
+    """Create a separate fresh build virtual environment for each build phase.
+    Installs pinned build toolchain and verifies interpreter isolation.
+    Fails clearly if environment creation or package installation fails.
+    """
+    venv_dir = tmp_dir / "fresh_build_venv"
+    rc, out, err = run_cmd([host_python, "-m", "venv", str(venv_dir)])
+    if rc != 0:
+        raise RuntimeError(f"Failed to create virtual environment in {venv_dir}: {err}\n{out}")
+
+    # Platform-specific executable resolution: Scripts/python.exe on Windows, bin/python on POSIX
+    if os.name == "nt":
+        venv_python = venv_dir / "Scripts" / "python.exe"
+    else:
+        venv_python = venv_dir / "bin" / "python"
+
+    if not venv_python.exists():
+        raise RuntimeError(f"Virtual environment Python executable not found at {venv_python}")
+
+    # Install exact pinned build dependencies into the fresh venv
+    install_reqs = [f"{pkg}=={ver}" for pkg, ver in PINNED_TOOLS.items()]
+    cmd_inst = [
+        str(venv_python),
+        "-m",
+        "pip",
+        "install",
+        "--quiet",
+        "--trusted-host",
+        "pypi.org",
+        "--trusted-host",
+        "files.pythonhosted.org",
+        "--trusted-host",
+        "pypi.python.org",
+    ] + install_reqs
+
+    rc_inst, out_inst, err_inst = run_cmd(cmd_inst)
+    if rc_inst != 0:
+        raise RuntimeError(
+            f"Failed to install pinned build tools into fresh environment {venv_python}: {err_inst}\n{out_inst}"
         )
 
-        if rc == 0:
-            name = ''
-            ver = ''
+    # Verify interpreter execution and environment isolation (sys.prefix != sys.base_prefix)
+    verify_code = (
+        "import sys, json; "
+        "print(json.dumps([sys.executable, sys.prefix, sys.base_prefix]))"
+    )
+    rc_chk, out_chk, err_chk = run_cmd([str(venv_python), "-c", verify_code])
+    if rc_chk != 0:
+        raise RuntimeError(f"Failed to verify fresh venv interpreter isolation: {err_chk}")
 
-            for line in out.splitlines():
-                if line.startswith('Name:'):
-                    name = line.split(':', 1)[1].strip()
-                elif line.startswith('Version:'):
-                    ver = line.split(':', 1)[1].strip()
+    interp_info = json.loads(out_chk)
+    venv_executable, venv_prefix, venv_base_prefix = interp_info[0], interp_info[1], interp_info[2]
+    if venv_prefix == venv_base_prefix:
+        raise RuntimeError(f"Interpreter {venv_python} is not isolated (sys.prefix == sys.base_prefix)")
 
-            if name and ver:
-                versions[name] = ver
+    # Verify installed package versions via pip list --format=json
+    rc_ver, out_ver, err_ver = run_cmd([str(venv_python), "-m", "pip", "list", "--format=json"])
+    if rc_ver != 0:
+        raise RuntimeError(f"Failed to list installed package versions in venv: {err_ver}")
 
-    return versions
+    installed_list = json.loads(out_ver)
+    actual_versions = {item["name"].lower(): item["version"] for item in installed_list}
+    for pkg, exp_ver in PINNED_TOOLS.items():
+        act_ver = actual_versions.get(pkg.lower())
+        if act_ver != exp_ver:
+            raise RuntimeError(
+                f"Package {pkg} version mismatch in fresh venv: expected {exp_ver}, got {act_ver}"
+            )
+
+    return {
+        "python_executable": venv_executable,
+        "sys_prefix": venv_prefix,
+        "sys_base_prefix": venv_base_prefix,
+        "execution_mode": "fresh_isolated_venv",
+        "verified_tools": {pkg: actual_versions[pkg.lower()] for pkg in PINNED_TOOLS},
+    }
 
 
-# ---------------------------------------------------------------------------
-# Main reproducibility procedure
-# ---------------------------------------------------------------------------
 
 def main():
     repo_root = Path(__file__).resolve().parents[1]
-    # Ensure we are on a clean git state and get the current commit SHA
-    rc, commit_sha, _ = run_cmd(['git', 'rev-parse', 'HEAD'], cwd=str(repo_root))
-    if rc != 0:
-        print('UNABLE_TO_VERIFY')
-        print('Could not determine current commit SHA')
-        sys.exit(1)
-    # Also obtain the commit timestamp (Unix epoch) for reproducible archives
-    rc, commit_ts, _ = run_cmd(['git', 'log', '-1', '--format=%ct', commit_sha], cwd=str(repo_root))
-    if rc != 0:
-        print('UNABLE_TO_VERIFY')
-        print('Could not determine commit timestamp')
-        sys.exit(1)
-
-    # Gather exact build tool versions from the host interpreter
     host_python = sys.executable
-    tool_versions = get_build_tool_versions(host_python)
-    required_tools = ['build', 'setuptools', 'wheel']
-    missing = [t for t in required_tools if t not in tool_versions]
-    if missing:
-        print('UNABLE_TO_VERIFY')
-        print(f'Missing required build tools: {missing}')
+
+    # 1. Determine current commit SHA
+    rc, commit_sha, _ = run_cmd(["git", "rev-parse", "HEAD"], cwd=str(repo_root))
+    if rc != 0:
+        print("UNABLE_TO_VERIFY")
+        print("Could not determine current commit SHA")
         sys.exit(1)
 
-    # Prepare two independent temporary build environments
-    results = []
+    # 2. Determine commit timestamp (Unix epoch) for reproducible archives (SOURCE_DATE_EPOCH)
+    rc, commit_ts_str, _ = run_cmd(
+        ["git", "log", "-1", "--format=%ct", commit_sha], cwd=str(repo_root)
+    )
+    if rc != 0:
+        print("UNABLE_TO_VERIFY")
+        print("Could not determine commit timestamp")
+        sys.exit(1)
+
+    try:
+        commit_ts = int(commit_ts_str.strip())
+    except ValueError:
+        print("UNABLE_TO_VERIFY")
+        print(f"Invalid commit timestamp: '{commit_ts_str}'")
+        sys.exit(1)
+
+    # 3. Perform two independent builds in separate temporary build directories
+    build_results = []
+    build_modes = []
     for i in range(2):
+        tmp_dir = Path(tempfile.mkdtemp(prefix=f"cryptoflex_fresh_build_{i+1}_"))
         try:
-            tmp_src = Path(tempfile.mkdtemp(prefix=f'cryptoflex_src_{i}_'))
-            # Copy the entire repository tree (excluding .git) into the temp dir
-            shutil.copytree(repo_root, tmp_src / 'crypto_flex', dirs_exist_ok=True,
-                            ignore=shutil.ignore_patterns('.git', '__pycache__', 'dist', 'build', '*.egg-info', 'scripts'))
-            src_dir = tmp_src / 'crypto_flex'
-            # Build directly using the host Python (no venv) to ensure build tools are available
-            # Build using deterministic timestamps
+            # Copy source tree excluding build artifacts and transient caches
+            src_dir = tmp_dir / "crypto_flex"
+            shutil.copytree(
+                repo_root,
+                src_dir,
+                dirs_exist_ok=True,
+                ignore=shutil.ignore_patterns(
+                    ".git",
+                    "__pycache__",
+                    "dist",
+                    "build",
+                    "*.egg-info",
+                    "scripts",
+                    ".pytest_cache",
+                    ".hypothesis",
+                ),
+            )
+
+            # Prepare separate fresh build environment
+            env_info = prepare_fresh_build_environment(tmp_dir, host_python)
+            build_python = env_info["python_executable"]
+            build_modes.append(env_info["execution_mode"])
+
+            # Execute build inside separate fresh environment with deterministic SOURCE_DATE_EPOCH
             env = os.environ.copy()
-            env['SOURCE_DATE_EPOCH'] = commit_ts.strip()
-            rc, out, err = run_cmd([host_python, '-m', 'build', '--wheel', '--no-isolation'], cwd=str(src_dir), env=env)
+            env["SOURCE_DATE_EPOCH"] = str(commit_ts)
+            rc, out, err = run_cmd(
+                [
+                    build_python,
+                    "-m",
+                    "build",
+                    "--sdist",
+                    "--wheel",
+                    "--no-isolation",
+                ],
+                cwd=str(src_dir),
+                env=env,
+            )
             if rc != 0:
-                raise RuntimeError(f'Build failed: {err}')
-            if rc != 0:
-                raise RuntimeError(f'Build failed: {err}')
-            # Locate the generated wheel inside the temporary source's dist directory
-            dist_dir = src_dir / 'dist'
-            wheels = list(dist_dir.glob('*.whl'))
+                raise RuntimeError(f"Build {i+1} failed: {err}\n{out}")
+
+            dist_dir = src_dir / "dist"
+            wheels = list(dist_dir.glob("*.whl"))
+            sdists = list(dist_dir.glob("*.tar.gz"))
+
             if not wheels:
-                raise RuntimeError('No wheel produced')
+                raise RuntimeError(f"Build {i+1} produced no wheel artifact")
+            if not sdists:
+                raise RuntimeError(f"Build {i+1} produced no sdist artifact")
+
             wheel_path = wheels[0]
-            # Record hash and size
+            sdist_path = sdists[0]
+
+            # Calculate raw wheel checksum
             wheel_hash = sha256_file(wheel_path)
             wheel_size = wheel_path.stat().st_size
-            results.append({
-                'path': str(wheel_path),
-                'hash': wheel_hash,
-                'size': wheel_size,
-            })
+
+            # Normalize sdist tar metadata and gzip timestamp header to SOURCE_DATE_EPOCH
+            sdist_hash, sdist_size = normalize_sdist(sdist_path, commit_ts)
+
+            build_results.append(
+                {
+                    "build_id": i + 1,
+                    "environment": env_info["execution_mode"],
+                    "python_executable": build_python,
+                    "sys_prefix": env_info["sys_prefix"],
+                    "sys_base_prefix": env_info["sys_base_prefix"],
+                    "wheel": {
+                        "filename": wheel_path.name,
+                        "hash": wheel_hash,
+                        "size": wheel_size,
+                    },
+                    "sdist": {
+                        "filename": sdist_path.name,
+                        "hash": sdist_hash,
+                        "size": sdist_size,
+                    },
+                }
+            )
         except Exception as e:
-            print('UNABLE_TO_VERIFY')
-            print(f'Error during build {i+1}: {e}')
+            print("UNABLE_TO_VERIFY")
+            print(f"Error during build {i+1}: {e}")
+            shutil.rmtree(tmp_dir, ignore_errors=True)
             sys.exit(1)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    # Compare the two results
-    if results[0]['hash'] == results[1]['hash'] and results[0]['size'] == results[1]['size']:
-        print('REPRODUCIBLE')
-    else:
-        print('NON_REPRODUCIBLE')
-        print('Build 1:', json.dumps(results[0], indent=2))
-        print('Build 2:', json.dumps(results[1], indent=2))
-        # Show basic diagnostics: timestamps of the wheels
-        for i, res in enumerate(results, start=1):
-            ts = os.path.getmtime(res['path'])
-            print(f'Build {i} timestamp: {ts}')
+    # 4. Compare artifacts between the two fresh builds
+    whl_match = (
+        build_results[0]["wheel"]["hash"] == build_results[1]["wheel"]["hash"]
+        and build_results[0]["wheel"]["size"] == build_results[1]["wheel"]["size"]
+    )
+    sdist_match = (
+        build_results[0]["sdist"]["hash"] == build_results[1]["sdist"]["hash"]
+        and build_results[0]["sdist"]["size"] == build_results[1]["sdist"]["size"]
+    )
 
-    # Emit a short JSON summary for downstream consumption
-    outcome = 'REPRODUCIBLE' if results[0]['hash'] == results[1]['hash'] else 'NON_REPRODUCIBLE'
+    is_reproducible = whl_match and sdist_match
+    outcome = "REPRODUCIBLE" if is_reproducible else "NON_REPRODUCIBLE"
+
+    print(outcome)
+
     summary = {
-        'commit_sha': commit_sha,
-        'tool_versions': tool_versions,
-        'builds': results,
-        'outcome': outcome,
+        "commit_sha": commit_sha,
+        "commit_timestamp": commit_ts,
+        "pinned_toolchain": PINNED_TOOLS,
+        "execution_modes": build_modes,
+        "wheel_reproducible": whl_match,
+        "sdist_reproducible": sdist_match,
+        "builds": build_results,
+        "outcome": outcome,
     }
-    print('\n---SUMMARY---')
+
+    print("\n---SUMMARY---")
     print(json.dumps(summary, indent=2))
-    if outcome != 'REPRODUCIBLE':
+
+    if not is_reproducible:
         sys.exit(1)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

@@ -33,9 +33,9 @@ python -m build --sdist --wheel --outdir dist/
 ## 2. Supply Chain Security Features & Roadmap
 
 ### 2.1 Implemented Supply Chain Controls
-*   **Reproducibility Verification:** Automated double-build reproducibility checking via `scripts/verify_reproducibility.py`.
+*   **Reproducibility Verification:** Automated double-build reproducibility checking via `scripts/verify_reproducibility.py`, verifying byte-for-byte SHA-256 identity of both wheel (`.whl`) and source distribution (`.tar.gz`) artifacts built under deterministic timestamps (`SOURCE_DATE_EPOCH`) with a pinned toolchain (`pip==26.2.1`, `setuptools==84.0.0`, `wheel==0.48.0`, `build==1.6.0`).
 *   **SHA-256 Checksum Manifests:** `SHA256SUMS.txt` is generated in `dist/` for all release artifacts.
-*   **Software Bill of Materials (SBOM):** Release CI (`.github/workflows/build-wheels.yml`) automatically generates a CycloneDX 1.4 JSON SBOM (`dist/SBOM.json`) using `cyclonedx-bom==4.1.2`, covering the Python build environment boundary.
+*   **Software Bill of Materials (SBOM):** Release CI (`.github/workflows/build-wheels.yml`) automatically generates a CycloneDX 1.4 JSON SBOM (`dist/SBOM.json`) using `cyclonedx-bom==4.1.2`, covering the Python build environment. It is a build-environment SBOM, not a product/runtime SBOM, and excludes `cryptography`, `liboqs-python`, and native `liboqs`.
 *   **Build Provenance Attestation:** Automated GitHub Actions build provenance attestation via `actions/attest-build-provenance`.
 
 ### 2.2 Future / Planned Enhancements

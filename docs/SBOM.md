@@ -5,13 +5,13 @@
 **Date:** September 2026
 
 > [!NOTE]
-> **SBOM Generation & Reference Document**
-> This document describes the dependency structure and cryptographic primitives of `cryptoflex`. An automated CycloneDX 1.4 JSON SBOM (`dist/SBOM.json`) is generated during release CI builds using `cyclonedx-bom==4.1.2`, hashed in `dist/SHA256SUMS.txt`, and published alongside release artifacts.
+> **Build-Environment SBOM & Reference Document**
+> The generated SBOM (`dist/SBOM.json`) describes the build environment used to produce release artifacts (`pip`, `build`, `setuptools`, `wheel`, `cyclonedx-bom`). It is a build-environment SBOM, not a product/runtime SBOM, and does not include `cryptography`, `liboqs-python`, or native `liboqs`.
 
 ## 1. Scope & Distribution Boundary
 
 * **Included in CI SBOM (`dist/SBOM.json`):** Python build environment dependencies present during artifact generation (`pip`, `build`, `setuptools`, `wheel`, `cyclonedx-bom`).
-* **Excluded from Python Package / Release SBOM:** Optional or external dependencies not installed in the build runner environment (such as `liboqs-python` and native `liboqs` C shared objects). Native `liboqs` is an external deployment requirement. In CI, real PQC verification (`tests.yml`) builds native `liboqs` pinned to tag `0.16.0` (commit `5a1a854b0dc9f2141bdc771c555ee60c37950183`).
+* **Excluded from Build-Environment SBOM:** Runtime and external dependencies not installed in the build runner environment (`cryptography`, `liboqs-python`, and native `liboqs` C shared objects). Native `liboqs` remains an external native deployment boundary.
 
 ## 2. Direct Python Dependencies
 
