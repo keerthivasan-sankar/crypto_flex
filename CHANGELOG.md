@@ -12,6 +12,33 @@ numbers** that don't necessarily move together:
   change for anyone with existing encrypted files and will always be
   called out explicitly here.
 
+## [0.5.3] - September 2026
+
+### Security / Hardening
+- strengthened malformed ML-KEM ciphertext validation/testing
+- improved adversarial validation coverage
+- narrowed security documentation claims where appropriate
+- documented memory-hygiene and security limitations accurately
+
+### Reproducibility / Build Integrity
+- fresh isolated virtual-environment reproducibility verification
+- pinned build toolchain:
+  - pip 26.2.1
+  - setuptools 84.0.0
+  - wheel 0.48.0
+  - build 1.6.0
+- byte-for-byte reproducibility verification for wheel and sdist artifacts
+- deterministic timestamp normalization using SOURCE_DATE_EPOCH
+
+### Supply Chain / SBOM
+- clarified build-environment SBOM scope
+- explicitly distinguished build-environment SBOM from product/runtime SBOM
+- documented external native liboqs boundary
+
+### Validation
+- 140 automated tests passing
+- reproducibility verification passing
+
 ## [0.5.2] - Release Candidate
 
 ### PR 2 Targeted Security Hardening (Discussion #2534 Remediation)

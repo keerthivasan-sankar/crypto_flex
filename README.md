@@ -180,7 +180,7 @@ For complete technical details, see:
 
 ## Testing
 
-138 automated tests covering unit, integration, adversarial, property-based (Hypothesis), and migration cases.
+140 automated tests covering unit, integration, adversarial, property-based (Hypothesis), and migration cases.
 
 
 ```bash
