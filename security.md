@@ -62,7 +62,7 @@ help route it correctly.
 
 `cryptoflex` has not yet undergone an independent third-party security
 audit — see [`TECHNICAL_REVIEW_1.md`](TECHNICAL_REVIEW_1.md) for a fuller
-picture of what's been verified so far (Hypothesis fuzzing, 138 automated tests, CI, two
+picture of what's been verified so far (Hypothesis fuzzing, 140 automated tests, CI, two
 previously-found-and-fixed validation bugs) versus what hasn't
 (formal independent security audit and evaluation of side-channel properties across the Python and native cryptographic layers). Please keep that context in mind
 both when deciding whether to rely on this library for anything
