@@ -253,7 +253,7 @@ def main():
                     "build",
                     "--sdist",
                     "--wheel",
-                    "--no-isolation",
+
                 ],
                 cwd=str(src_dir),
                 env=env,
