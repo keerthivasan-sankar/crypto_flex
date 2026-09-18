@@ -302,6 +302,22 @@ def main():
     )
 
     is_reproducible = whl_match and raw_sdist_match
+
+    # Ensure release build parity: if dist/ exists, its artifacts MUST match the verified builds
+    release_dist = repo_root / "dist"
+    if release_dist.exists() and is_reproducible:
+        release_wheels = list(release_dist.glob("*.whl"))
+        release_sdists = list(release_dist.glob("*.tar.gz"))
+        if release_wheels and release_sdists:
+            rel_whl_hash = sha256_file(release_wheels[0])
+            rel_sdist_hash = sha256_file(release_sdists[0])
+            if rel_whl_hash != build_results[0]["wheel"]["hash"]:
+                print(f"RELEASE PARITY FAILED: Release wheel hash {rel_whl_hash} does not match verified hash {build_results[0]['wheel']['hash']}")
+                is_reproducible = False
+            if rel_sdist_hash != build_results[0]["sdist"]["raw"]["hash"]:
+                print(f"RELEASE PARITY FAILED: Release sdist hash {rel_sdist_hash} does not match verified hash {build_results[0]['sdist']['raw']['hash']}")
+                is_reproducible = False
+
     outcome = "REPRODUCIBLE" if is_reproducible else "NON_REPRODUCIBLE"
     print(outcome)
 
