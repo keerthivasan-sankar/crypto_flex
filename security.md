@@ -58,6 +58,13 @@ combiner, header format, AEAD layer, streaming engine, Argon2id/Scrypt keystore,
 a `cryptoflex` bug or an upstream one, report it here anyway and I'll
 help route it correctly.
 
+## Memory Security & Limitations
+
+CryptoFlex performs best-effort zeroization of mutable secret buffers that it directly controls (e.g., derived root keys, wrapping keys, and temporary key buffers in `encrypt()`, `decrypt()`, `ephemeral_encrypt()`, streaming, and keystore operations) using `cryptoflex.utils.zeroize()`.
+
+- **Immutable Python Bytes:** Python `bytes` objects cannot be safely mutated in place. Unbuffered intermediate immutable `bytes` remain managed by CPython garbage collection.
+- **Dependency & Native Allocations:** Native memory lifecycle for X25519 (OpenSSL/`cryptography`) and ML-KEM (`liboqs`) key objects remains under the control of upstream cryptographic libraries.
+
 ## Current Audit Status
 
 `cryptoflex` has not yet undergone an independent third-party security
