@@ -77,14 +77,14 @@ def _derive_wrapping_key(password: str | bytes, salt: bytes, kdf_type: str = "ar
             )
             return kdf.derive(password)
         elif kdf_type == "scrypt":
-            kdf = Scrypt(
+            scrypt_kdf = Scrypt(
                 salt=salt,
                 length=KEY_LEN,
                 n=2**17,  # OWASP minimum
                 r=8,
                 p=1,
             )
-            return kdf.derive(password)
+            return scrypt_kdf.derive(password)
         else:
             raise ValueError(f"unsupported KDF type: '{kdf_type}'")
     finally:
