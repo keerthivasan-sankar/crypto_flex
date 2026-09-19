@@ -38,7 +38,7 @@ This document formalizes the security goals, attacker models, cryptographic inva
 
 6. **Public key / bundle authenticity**:
 
-   - CryptoFlex does not currently authenticate the identity associated with a `PublicBundle`. An application that receives a bundle must obtain and authenticate it using an external trusted distribution mechanism. An attacker capable of substituting a recipient's public bundle may redirect encryption to attacker-controlled keys.
+   - CryptoFlex does not currently authenticate the identity associated with a `PublicBundle`. An application that receives a bundle must obtain and authenticate it using an external trusted distribution mechanism. An attacker capable of substituting a recipient's public bundle may redirect encryption to attacker‑controlled keys.
 
 ---
 
@@ -73,11 +73,15 @@ This document formalizes the security goals, attacker models, cryptographic inva
 ## 3. Known Operational Limitations & Out-of-Scope Risks
 
 1. **Python Heap Management & Memory Security**:
-   - `cryptoflex` implements best-effort zeroization (`ctypes.memset`) on mutable buffers (`bytearray`/`memoryview`).
-   - In CPython, immutable `bytes` objects (such as raw keys returned by underlying C extensions) cannot be zeroized in-place natively without unsafe interpreter hacks.
+   - `cryptoflex` implements best‑effort zeroization (`ctypes.memset`) on mutable buffers (`bytearray`/`memoryview`).
+   - In CPython, immutable `bytes` objects (such as raw keys returned by underlying C extensions) cannot be zeroized in‑place natively without unsafe interpreter hacks.
    - While `del` is invoked eagerly, actual memory release depends on Python's garbage collector, and transient copies may exist in memory managed by underlying C libraries (`liboqs` / `OpenSSL`).
    - Operating system swap file locking (`mlock`) is not enforced at the Python level.
-2. **Side-Channel & Constant-Time Limitations**:
-   - `cryptoflex` wraps underlying Python and native C libraries. It does NOT claim constant-time execution or complete timing-side-channel resistance at the Python layer.
+2. **Side‑Channel & Constant‑Time Limitations**:
+   - `cryptoflex` wraps underlying Python and native C libraries. It does NOT claim constant‑time execution or complete timing‑side‑channel resistance at the Python layer.
 3. **Deterministic Protocol Test Vectors**:
-   - Standardized deterministic test vectors verifying header serialization, HKDF combiner derivations, and X25519/mock-PQC encapsulation are defined in `tests/vectors/` and verified independently via `tests/test_vectors.py`.
+   - Standardized deterministic test vectors verifying header serialization, HKDF combiner derivations, and X25519/mock‑PQC encapsulation are defined in `tests/vectors/` and verified independently via `tests/test_vectors.py`.
+4. **PublicBundle Authenticity - Future Work / Explicitly Out of Scope Today**:
+   - `cryptoflex` trusts whatever `PublicBundle` it is given. It performs no signature verification, no PKI lookup, and no out‑of‑band identity confirmation on a public bundle before using it to derive a root key.
+   - Concretely: authenticating that a specific `PublicBundle` genuinely belongs to the real‑world party a caller intends to encrypt to is entirely the calling application's responsibility, not something `cryptoflex` does today. An application that hands `cryptoflex` an attacker‑substituted `PublicBundle` (e.g. via a compromised key‑distribution channel) will encrypt to the attacker without any warning from this library - that is a correctly‑functioning `cryptoflex` operating on bad input, not a bug in `cryptoflex`.
+   - No signed‑bundle, PKI, or trust‑on‑first‑use mechanism is designed or implemented here. If an application needs this property, it must build it on top of `cryptoflex` (e.g. by signing `PublicBundle` JSON with a separate, already‑trusted identity key and verifying that signature before ever passing the bundle to `cryptoflex`).
