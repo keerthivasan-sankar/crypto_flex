@@ -2,7 +2,7 @@
 cryptoflex.cli
 ===============
 
-Command Line Interface for cryptoflex v0.5.2.
+Command Line Interface for cryptoflex v0.5.3.
 
 Usage:
   cryptoflex keygen --key key.cflk --bundle bundle.json [--password PASS] [--kdf {argon2id,scrypt}]

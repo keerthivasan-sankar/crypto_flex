@@ -1,4 +1,4 @@
-# cryptoflex Format & Cryptographic Specification (v0.5.2)
+# cryptoflex Format & Cryptographic Specification (v0.5.3)
 
 This document provides a formal technical specification of the data formats, key derivation mechanisms, and framing rules implemented by `cryptoflex`.
 

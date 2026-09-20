@@ -1,0 +1,119 @@
+{
+  "classical_only": {
+    "display_name": "Classical (X25519)",
+    "keygen": {
+      "iterations": 50,
+      "mean_ms": 0.03931400045985356,
+      "stddev_ms": 0.002295516574071245,
+      "ops_per_sec": 25436.231070434416
+    },
+    "derive_root_key": {
+      "iterations": 50,
+      "mean_ms": 0.08467800042126328,
+      "stddev_ms": 0.009031492792323478,
+      "ops_per_sec": 11809.442771736643
+    },
+    "encrypt_1k": {
+      "iterations": 50,
+      "mean_ms": 0.09997200075304136,
+      "stddev_ms": 0.019917093156363627,
+      "ops_per_sec": 10002.800708873257
+    },
+    "decrypt_1k": {
+      "iterations": 50,
+      "mean_ms": 0.06159999931696802,
+      "stddev_ms": 0.013782806209836447,
+      "ops_per_sec": 16233.766413769183
+    },
+    "stream_encrypt_1m": {
+      "iterations": 10,
+      "mean_ms": 1.3143300006049685,
+      "stddev_ms": 0.19949584830236788,
+      "ops_per_sec": 760.8439277348256
+    },
+    "stream_decrypt_1m": {
+      "iterations": 10,
+      "mean_ms": 2.9830700004822575,
+      "stddev_ms": 0.42142201973065774,
+      "ops_per_sec": 335.22512037543044
+    }
+  },
+  "hybrid_standard": {
+    "display_name": "Hybrid Standard (X25519 + ML-KEM-768)",
+    "keygen": {
+      "iterations": 50,
+      "mean_ms": 0.5005259995232336,
+      "stddev_ms": 0.1986131100891657,
+      "ops_per_sec": 1997.898212985001
+    },
+    "derive_root_key": {
+      "iterations": 50,
+      "mean_ms": 0.5616719991667196,
+      "stddev_ms": 0.18369733854149534,
+      "ops_per_sec": 1780.3985270470507
+    },
+    "encrypt_1k": {
+      "iterations": 50,
+      "mean_ms": 0.4904679994797334,
+      "stddev_ms": 0.09918806105260256,
+      "ops_per_sec": 2038.869000751844
+    },
+    "decrypt_1k": {
+      "iterations": 50,
+      "mean_ms": 0.42428200104041025,
+      "stddev_ms": 0.06649715870424404,
+      "ops_per_sec": 2356.9229841186598
+    },
+    "stream_encrypt_1m": {
+      "iterations": 10,
+      "mean_ms": 1.7016100027831271,
+      "stddev_ms": 0.06981139809226429,
+      "ops_per_sec": 587.6787268318918
+    },
+    "stream_decrypt_1m": {
+      "iterations": 10,
+      "mean_ms": 2.227950004453305,
+      "stddev_ms": 0.27530337783582703,
+      "ops_per_sec": 448.84310599482245
+    }
+  },
+  "hybrid_high": {
+    "display_name": "Hybrid High Assurance (X25519 + ML-KEM-1024)",
+    "keygen": {
+      "iterations": 50,
+      "mean_ms": 0.3962740011047572,
+      "stddev_ms": 0.054268367897558206,
+      "ops_per_sec": 2523.5064556648636
+    },
+    "derive_root_key": {
+      "iterations": 50,
+      "mean_ms": 0.49895200005266815,
+      "stddev_ms": 0.040232184522996796,
+      "ops_per_sec": 2004.2008046754847
+    },
+    "encrypt_1k": {
+      "iterations": 50,
+      "mean_ms": 0.5018379996181466,
+      "stddev_ms": 0.03061386280740451,
+      "ops_per_sec": 1992.6749284847097
+    },
+    "decrypt_1k": {
+      "iterations": 50,
+      "mean_ms": 0.5294720001984388,
+      "stddev_ms": 0.061218077564774584,
+      "ops_per_sec": 1888.673999050401
+    },
+    "stream_encrypt_1m": {
+      "iterations": 10,
+      "mean_ms": 2.0523999992292374,
+      "stddev_ms": 0.14082018415277736,
+      "ops_per_sec": 487.2344574037917
+    },
+    "stream_decrypt_1m": {
+      "iterations": 10,
+      "mean_ms": 2.1830499987117946,
+      "stddev_ms": 0.1134917731880914,
+      "ops_per_sec": 458.07471225583214
+    }
+  }
+}

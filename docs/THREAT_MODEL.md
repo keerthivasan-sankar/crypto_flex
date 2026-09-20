@@ -1,4 +1,4 @@
-# cryptoflex Threat Model & Security Analysis (v0.5.2)
+# cryptoflex Threat Model & Security Analysis (v0.5.3)
 
 This document formalizes the security goals, attacker models, cryptographic invariants, and known operational limitations of `cryptoflex`.
 
