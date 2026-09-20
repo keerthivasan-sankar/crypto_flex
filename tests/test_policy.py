@@ -79,23 +79,20 @@ def test_all_profiles_deprecated_raises_hard_stop():
 
 def test_policy_rejects_disallowed_status():
     risk_table = {"algorithms": {"x25519": {"status": "disallowed", "quantum_safe": False}}}
-    engine = PolicyEngine(risk_table=risk_table)
-    acceptable, _, _ = engine._is_profile_acceptable(PROFILES["classical_only"], False)
-    assert not acceptable
+    with pytest.raises(ValueError):
+        PolicyEngine(risk_table=risk_table)
 
 
 def test_policy_rejects_unknown_status():
     risk_table = {"algorithms": {"x25519": {"status": "what_is_this", "quantum_safe": False}}}
-    engine = PolicyEngine(risk_table=risk_table)
-    acceptable, _, _ = engine._is_profile_acceptable(PROFILES["classical_only"], False)
-    assert not acceptable
+    with pytest.raises(ValueError):
+        PolicyEngine(risk_table=risk_table)
 
 
 def test_policy_rejects_missing_status():
     risk_table = {"algorithms": {"x25519": {"quantum_safe": False}}}
-    engine = PolicyEngine(risk_table=risk_table)
-    acceptable, _, _ = engine._is_profile_acceptable(PROFILES["classical_only"], False)
-    assert not acceptable
+    with pytest.raises(ValueError):
+        PolicyEngine(risk_table=risk_table)
 
 
 def test_policy_mixed_approved_deprecated_is_degraded():

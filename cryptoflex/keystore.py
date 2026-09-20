@@ -151,11 +151,12 @@ def export_keyset_bytes(keyset: KeySet, password: str | bytes, *, use_argon2: bo
         alg_id = source.algorithm_id
         try:
             priv_bytes = source.serialize_private(priv_handle)
+            b64_str = base64.b64encode(priv_bytes).decode("ascii")
         except Exception as e:
             raise DecryptionError(f"cannot serialize private handle for '{alg_id}'") from e
 
         serialized_privates.append(
-            {"alg_id": alg_id, "priv_b64": base64.b64encode(priv_bytes).decode("ascii")}
+            {"alg_id": alg_id, "priv_b64": b64_str}
         )
 
     payload = {
@@ -171,10 +172,17 @@ def export_keyset_bytes(keyset: KeySet, password: str | bytes, *, use_argon2: bo
     magic = MAGIC_KEYSTORE_ARGON2 if use_argon2 else MAGIC_KEYSTORE_SCRYPT
     kdf_type = "argon2id" if use_argon2 else "scrypt"
 
-    wrapping_key = _derive_wrapping_key(password, salt, kdf_type=kdf_type)
+    wrapping_key_bytes = _derive_wrapping_key(password, salt, kdf_type=kdf_type)
+    wrapping_key_buf = bytearray(wrapping_key_bytes)
+    del wrapping_key_bytes
 
-    aesgcm = AESGCM(wrapping_key)
-    ct_with_tag = aesgcm.encrypt(nonce, plaintext, magic)
+    try:
+        aesgcm = AESGCM(bytes(wrapping_key_buf))
+        ct_with_tag = aesgcm.encrypt(nonce, plaintext, magic)
+        del aesgcm
+    finally:
+        from .utils import zeroize
+        zeroize(wrapping_key_buf)
 
     return magic + salt + nonce + ct_with_tag
 
@@ -204,14 +212,20 @@ def import_keyset_bytes(data: bytes, password: str | bytes) -> KeySet:
     nonce = data[4 + SALT_LEN : 4 + SALT_LEN + NONCE_LEN]
     ct_with_tag = data[4 + SALT_LEN + NONCE_LEN :]
 
-    wrapping_key = _derive_wrapping_key(password, salt, kdf_type=kdf_type)
-    aesgcm = AESGCM(wrapping_key)
+    wrapping_key_bytes = _derive_wrapping_key(password, salt, kdf_type=kdf_type)
+    wrapping_key_buf = bytearray(wrapping_key_bytes)
+    del wrapping_key_bytes
 
     try:
+        aesgcm = AESGCM(bytes(wrapping_key_buf))
         plaintext = aesgcm.decrypt(nonce, ct_with_tag, magic)
+        del aesgcm
         payload = json.loads(plaintext.decode("utf-8"))
     except Exception as e:
         raise DecryptionError("invalid password or corrupted keystore") from e
+    finally:
+        from .utils import zeroize
+        zeroize(wrapping_key_buf)
 
     try:
         keystore_profile_id = payload["profile_id"]

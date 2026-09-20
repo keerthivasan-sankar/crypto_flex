@@ -68,6 +68,45 @@ def _load_risk_table() -> dict:
 class PolicyEngine:
     def __init__(self, risk_table: Optional[dict] = None):
         self.risk_table = risk_table if risk_table is not None else _load_risk_table()
+        self._validate_risk_table(self.risk_table)
+
+    @staticmethod
+    def _validate_risk_table(risk_table: dict) -> None:
+        """Validate the structure of the risk table.
+
+        Raises:
+            ValueError: If the table does not conform to the expected schema.
+        """
+        if not isinstance(risk_table, dict):
+            raise ValueError("Risk table must be a dictionary object (dict).")
+
+        if "algorithms" not in risk_table:
+            raise ValueError("Risk table missing required 'algorithms' field.")
+        algos = risk_table["algorithms"]
+        if not isinstance(algos, dict):
+            raise ValueError("'algorithms' must be a dictionary object (dict).")
+
+        if "table_version" in risk_table and not isinstance(risk_table["table_version"], str):
+            raise ValueError("'table_version' must be a string.")
+        if "note" in risk_table and not isinstance(risk_table["note"], str):
+            raise ValueError("'note' must be a string if present.")
+
+        for algo_id, record in algos.items():
+            if not isinstance(record, dict):
+                raise ValueError(f"Algorithm entry '{algo_id}' must be an object.")
+            if "status" not in record:
+                raise ValueError(f"Algorithm '{algo_id}' missing required 'status' field.")
+            status = record["status"]
+            if status not in ("approved", "deprecated"):
+                raise ValueError(f"Algorithm '{algo_id}' has invalid status '{status}'.")
+            if "quantum_safe" not in record:
+                raise ValueError(f"Algorithm '{algo_id}' missing required 'quantum_safe' field.")
+            qs = record["quantum_safe"]
+            if not isinstance(qs, bool):
+                raise ValueError(f"Algorithm '{algo_id}' quantum_safe must be boolean.")
+            if "notes" in record and not isinstance(record["notes"], str):
+                raise ValueError(f"Algorithm '{algo_id}' notes must be a string if present.")
+
 
     def _is_profile_acceptable(self, profile: SecurityProfile, require_quantum_safe: bool) -> tuple[bool, bool, str]:
         """Validates that a profile is acceptable under current policy.

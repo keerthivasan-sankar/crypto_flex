@@ -84,8 +84,14 @@ def ephemeral_encrypt(
     if nonce is None:
         raise ValueError("derive_root_key() returned a v1 header with no nonce")
 
-    aesgcm = AESGCM(derived.root_key)
-    ct_with_tag = aesgcm.encrypt(nonce, plaintext, header_bytes)
+    root_key_buf = bytearray(derived.root_key)
+    try:
+        aesgcm = AESGCM(bytes(root_key_buf))
+        ct_with_tag = aesgcm.encrypt(nonce, plaintext, header_bytes)
+    finally:
+        from .utils import zeroize
+        zeroize(root_key_buf)
+    del aesgcm, derived
 
     return WireMessage(encrypted_blob=header_bytes + ct_with_tag)
 

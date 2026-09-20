@@ -45,6 +45,7 @@ from .errors import DecryptionError, DowngradeError
 from .header import NONCE_LEN, CryptoflexHeader, HeaderParseError
 from .policy import Constraint, PolicyDecision, PolicyEngine
 from .profiles import SecurityProfile, get_profile
+from .utils import zeroize
 
 
 @dataclass
@@ -257,12 +258,16 @@ def encrypt(bundle: PublicBundle, plaintext: bytes) -> bytes:
     if nonce is None:  # v2 headers always have a nonce
         raise ValueError("derive_root_key() produced a v1 header with no nonce — cannot encrypt")
 
-    aesgcm = AESGCM(derived.root_key)
-    ct_with_tag = aesgcm.encrypt(nonce, plaintext, header_bytes)
-
-    # Eagerly drop root key reference to reduce its heap lifetime.
+    # Convert derived root key to mutable buffer for best‑effort zeroisation
+    root_key_buf = bytearray(derived.root_key)
+    aesgcm = AESGCM(bytes(root_key_buf))
+    try:
+        ct_with_tag = aesgcm.encrypt(nonce, plaintext, header_bytes)
+    finally:
+        # Zeroise the mutable buffer regardless of success or exception
+        zeroize(root_key_buf)
+    # Remove references to cryptographic objects to limit their lifetime
     del aesgcm, derived
-
     return header_bytes + ct_with_tag
 
 
