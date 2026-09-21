@@ -153,15 +153,23 @@ def test_wrong_tool_version(mock_run_cmd, tmp_path):
             verify_reproducibility.prepare_fresh_build_environment(tmp_path, sys.executable)
 
 
-@pytest.mark.slow
-def test_source_ref_resolution():
-    # v0.5.3 tag commit
+@mock.patch("verify_reproducibility.run_cmd")
+def test_source_ref_resolution(mock_run_cmd):
     expected_sha = "9bad1af777308824ddc35f8fb4d5fe49d09c0d70"
+    
+    def side_effect(cmd, *args, **kwargs):
+        if "rev-list" in cmd:
+            return 0, expected_sha, ""
+        if "log" in cmd:
+            return 0, "1789881553", ""
+        return 1, "", "Unknown command"
+        
+    mock_run_cmd.side_effect = side_effect
+
     resolved_sha, commit_ts = verify_reproducibility.resolve_source_ref(repo_root, "v0.5.3")
     
     assert resolved_sha == expected_sha
-    assert isinstance(commit_ts, int)
-    assert commit_ts > 0
+    assert commit_ts == 1789881553
 
 
 @pytest.mark.slow
