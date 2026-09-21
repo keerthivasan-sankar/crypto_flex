@@ -38,7 +38,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip==26.2.1
           pip install build==1.6.0 setuptools==84.0.0 wheel==0.48.0
-          python -m build --sdist --wheel --outdir dist/
+          mkdir -p ci_build
+          git archive --format=tar HEAD | tar -x -C ci_build
+          cd ci_build
+          python -m build --sdist --wheel --outdir ../dist/
 
       - name: Verify Reproducibility (hard release gate)
         env:
