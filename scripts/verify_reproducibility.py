@@ -7,16 +7,16 @@ temporary source copies and separate fresh virtual build environments populated 
 pinned build dependencies (pip==26.2.1, setuptools==84.0.0, wheel==0.48.0, build==1.6.0).
 
 The script records raw artifact hashes for the wheel and the source distribution
-before any normalization. It then optionally normalizes the sdist for reproducibility
-reporting.
+before any normalization. It then optionally compares those builds against a
+reference directory supplied by the caller.
 
 The script reports one of four outcomes:
-  * REPRODUCIBLE – raw wheel and raw sdist are identical across two builds.
-  * NORMALIZED_REPRODUCIBLE – raw wheel matches and normalized sdist matches, but raw sdist differs.
+  * REPRODUCIBLE – raw wheel and raw sdist are identical across two builds (and match reference if provided).
   * NON_REPRODUCIBLE – artifact hashes differ.
   * UNABLE_TO_VERIFY – the experiment could not be performed (e.g. build failure).
 """
 
+import argparse
 import gzip
 import hashlib
 import io
@@ -134,6 +134,7 @@ def prepare_fresh_build_environment(tmp_dir: Path, host_python: str) -> dict:
             f"Failed to install pinned build tools into fresh environment {venv_python}: {err_inst}\n{out_inst}"
         )
 
+    # Verify interpreter isolation
     verify_code = (
         "import sys, json; "
         "print(json.dumps([sys.executable, sys.prefix, sys.base_prefix]))"
@@ -169,22 +170,47 @@ def prepare_fresh_build_environment(tmp_dir: Path, host_python: str) -> dict:
     }
 
 
+def extract_source(commit_sha: str, dest_dir: Path, repo_root: Path):
+    """Extract the tracked files of ``commit_sha`` into ``dest_dir`` using ``git archive``.
+    Guarantees that only committed files are present; untracked files are ignored.
+    """
+    # Run `git archive <sha>` and pipe to tar extraction
+    proc = subprocess.run(
+        ["git", "archive", commit_sha],
+        cwd=str(repo_root),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"git archive failed for {commit_sha}: {proc.stderr.decode().strip()}")
+    archive_data = proc.stdout
+    with tarfile.open(fileobj=io.BytesIO(archive_data)) as tf:
+        tf.extractall(path=dest_dir)
+
+
 def main():
+    parser = argparse.ArgumentParser(description="Verify reproducible builds of CryptoFlex.")
+    parser.add_argument("--source-ref", default="HEAD", help="Git reference (tag, branch, or commit) to verify. Defaults to HEAD.")
+    parser.add_argument("--reference-dir", default=None, help="Path to a directory containing reference wheel and sdist artifacts.")
+    args = parser.parse_args()
+
     repo_root = Path(__file__).resolve().parents[1]
     host_python = sys.executable
 
-    rc, commit_sha, _ = run_cmd(["git", "rev-parse", "HEAD"], cwd=str(repo_root))
+    # Resolve source reference to full commit SHA
+    rc, resolved_sha, _ = run_cmd(["git", "rev-parse", f"{args.source_ref}^{{commit}}"], cwd=str(repo_root))
     if rc != 0:
         print("UNABLE_TO_VERIFY")
-        print("Could not determine current commit SHA")
+        print(f"Could not resolve source reference '{args.source_ref}'")
         sys.exit(1)
+    resolved_sha = resolved_sha.strip()
 
-    rc, commit_ts_str, _ = run_cmd(["git", "log", "-1", "--format=%ct", commit_sha], cwd=str(repo_root))
+    # Resolve commit timestamp
+    rc, commit_ts_str, _ = run_cmd(["git", "log", "-1", "--format=%ct", resolved_sha], cwd=str(repo_root))
     if rc != 0:
         print("UNABLE_TO_VERIFY")
         print("Could not determine commit timestamp")
         sys.exit(1)
-
     try:
         commit_ts = int(commit_ts_str.strip())
     except ValueError:
@@ -198,21 +224,9 @@ def main():
         tmp_dir = Path(tempfile.mkdtemp(prefix=f"cryptoflex_fresh_build_{i+1}_"))
         try:
             src_dir = tmp_dir / "crypto_flex"
-            shutil.copytree(
-                repo_root,
-                src_dir,
-                dirs_exist_ok=True,
-                ignore=shutil.ignore_patterns(
-                    ".git",
-                    "__pycache__",
-                    "dist",
-                    "build",
-                    "*.egg-info",
-                    "scripts",
-                    ".pytest_cache",
-                    ".hypothesis",
-                ),
-            )
+            src_dir.mkdir(parents=True, exist_ok=True)
+            # Extract exact source tree for the resolved commit
+            extract_source(resolved_sha, src_dir, repo_root)
 
             env_info = prepare_fresh_build_environment(tmp_dir, host_python)
             build_python = env_info["python_executable"]
@@ -222,7 +236,7 @@ def main():
             env["SOURCE_DATE_EPOCH"] = str(commit_ts)
             rc, out, err = run_cmd(
                 [
-                    build_python,
+                    str(build_python),
                     "-m",
                     "build",
                     "--sdist",
@@ -303,32 +317,42 @@ def main():
 
     is_reproducible = whl_match and raw_sdist_match
 
-    # Ensure release build parity: if dist/ exists, its artifacts MUST match the verified builds
-    release_dist = repo_root / "dist"
-    if release_dist.exists() and is_reproducible:
-        release_wheels = list(release_dist.glob("*.whl"))
-        release_sdists = list(release_dist.glob("*.tar.gz"))
-        if release_wheels and release_sdists:
-            rel_whl_hash = sha256_file(release_wheels[0])
-            rel_sdist_hash = sha256_file(release_sdists[0])
-            if rel_whl_hash != build_results[0]["wheel"]["hash"]:
-                print(f"RELEASE PARITY FAILED: Release wheel hash {rel_whl_hash} does not match verified hash {build_results[0]['wheel']['hash']}")
-                is_reproducible = False
-            if rel_sdist_hash != build_results[0]["sdist"]["raw"]["hash"]:
-                print(f"RELEASE PARITY FAILED: Release sdist hash {rel_sdist_hash} does not match verified hash {build_results[0]['sdist']['raw']['hash']}")
-                is_reproducible = False
+    # Reference directory handling
+    reference_parity = None
+    if args.reference_dir:
+        ref_dir = Path(args.reference_dir)
+        if not ref_dir.is_dir():
+            print("UNABLE_TO_VERIFY")
+            print(f"Reference directory {ref_dir} does not exist")
+            sys.exit(1)
+        ref_wheels = list(ref_dir.glob("*.whl"))
+        ref_sdists = list(ref_dir.glob("*.tar.gz"))
+        if not ref_wheels or not ref_sdists:
+            print("UNABLE_TO_VERIFY")
+            print("Reference directory missing required .whl or .tar.gz files")
+            sys.exit(1)
+        ref_wheel_hash = sha256_file(ref_wheels[0])
+        ref_sdist_hash = sha256_file(ref_sdists[0])
+        wheel_ref_match = (ref_wheel_hash == build_results[0]["wheel"]["hash"])
+        sdist_ref_match = (ref_sdist_hash == build_results[0]["sdist"]["raw"]["hash"])
+        reference_parity = wheel_ref_match and sdist_ref_match
+        if not reference_parity:
+            is_reproducible = False
 
     outcome = "REPRODUCIBLE" if is_reproducible else "NON_REPRODUCIBLE"
     print(outcome)
 
     summary = {
-        "commit_sha": commit_sha,
+        "source_ref": args.source_ref,
+        "resolved_commit_sha": resolved_sha,
         "commit_timestamp": commit_ts,
         "pinned_toolchain": PINNED_TOOLS,
         "execution_modes": build_modes,
         "wheel_reproducible": whl_match,
         "raw_sdist_reproducible": raw_sdist_match,
         "normalized_sdist_reproducible": normalized_sdist_match,
+        "reference_dir": args.reference_dir,
+        "reference_parity": reference_parity,
         "builds": build_results,
         "outcome": outcome,
     }
@@ -336,6 +360,7 @@ def main():
     print(json.dumps(summary, indent=2))
     if not is_reproducible:
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
