@@ -24,20 +24,31 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Compute SOURCE_DATE_EPOCH and expose to later steps
+      - name: Resolve source commit metadata
+        id: get_commit
         run: |
-          echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct ${{ github.sha }})" >> $GITHUB_ENV
+          COMMIT_SHA=$(git rev-parse HEAD)
+          COMMIT_TS=$(git log -1 --format=%ct "$COMMIT_SHA")
+          echo "sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
+          echo "timestamp=$COMMIT_TS" >> "$GITHUB_OUTPUT"
 
       - name: Build sdist and wheel
+        env:
+          SOURCE_DATE_EPOCH: ${{ steps.get_commit.outputs.timestamp }}
         run: |
           python -m pip install --upgrade pip==26.2.1
           pip install build==1.6.0 setuptools==84.0.0 wheel==0.48.0
-          python -m build --sdist --wheel --outdir dist/
+          mkdir -p ci_build
+          git archive --format=tar HEAD | tar -x -C ci_build
+          cd ci_build
+          python -m build --sdist --wheel --outdir ../dist/
 
-      - name: Verify Reproducibility
+      - name: Verify Reproducibility (hard release gate)
+        env:
+          SOURCE_DATE_EPOCH: ${{ steps.get_commit.outputs.timestamp }}
         run: |
           python scripts/verify_reproducibility.py \
-            --source-ref ${{ github.sha }} \
+            --source-ref ${{ steps.get_commit.outputs.sha }} \
             --reference-dir dist/
 
       - name: Generate CycloneDX SBOM

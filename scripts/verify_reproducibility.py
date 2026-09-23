@@ -2,17 +2,25 @@
 
 Utility to test reproducible builds of the CryptoFlex package.
 
-It performs two independent builds from the *same* Git revision using separate
-temporary source copies and separate fresh virtual build environments populated with
-pinned build dependencies (pip==26.2.1, setuptools==84.0.0, wheel==0.48.0, build==1.6.0).
+It performs two independent builds from a specific Git revision (controlled via
+``--source-ref``, defaulting to ``HEAD``) using separate temporary source copies
+extracted via ``git archive`` and separate fresh virtual build environments
+populated with pinned build dependencies (pip==26.2.1, setuptools==84.0.0,
+wheel==0.48.0, build==1.6.0).
 
 The script records raw artifact hashes for the wheel and the source distribution
-before any normalization. It then optionally compares those builds against a
-reference directory supplied by the caller.
+before any normalization. It then optionally normalizes the sdist for diagnostic
+reporting.
 
-The script reports one of four outcomes:
-  * REPRODUCIBLE – raw wheel and raw sdist are identical across two builds (and match reference if provided).
-  * NON_REPRODUCIBLE – artifact hashes differ.
+When ``--reference-dir`` is supplied, the script additionally compares the
+independently rebuilt artifacts against the reference artifacts found in that
+directory (e.g. the CI-produced ``dist/`` or downloaded published release
+artifacts). The local ``dist/`` directory is **never** implicitly consulted.
+
+The script reports one of three outcomes:
+  * REPRODUCIBLE – raw wheel and raw sdist are byte-for-byte identical across
+    two independent builds (and match the reference artifacts, if supplied).
+  * NON_REPRODUCIBLE – artifact SHA-256 checksums differ.
   * UNABLE_TO_VERIFY – the experiment could not be performed (e.g. build failure).
 """
 
@@ -63,6 +71,9 @@ def sha256_file(path: Path) -> str:
 def normalize_sdist_copy(sdist_path: Path, target_mtime: int) -> tuple[str, int, Path]:
     """Create a normalized copy of the sdist without mutating the original file.
     Returns (sha256_hash, file_size_bytes, normalized_path).
+
+    This is a DIAGNOSTIC-ONLY operation. The primary reproducibility verdict
+    uses raw (un-normalized) SHA-256 hashes.
     """
     with tarfile.open(sdist_path, "r:gz") as tf_in:
         members = tf_in.getmembers()
@@ -101,7 +112,8 @@ def prepare_fresh_build_environment(tmp_dir: Path, host_python: str) -> dict:
     Installs pinned build toolchain and verifies interpreter isolation.
     """
     venv_dir = tmp_dir / "fresh_build_venv"
-    rc, out, err = run_cmd([host_python, "-m", "venv", str(venv_dir)])
+    _run = sys.modules[__name__].run_cmd
+    rc, out, err = _run([host_python, "-m", "venv", str(venv_dir)])
     if rc != 0:
         raise RuntimeError(f"Failed to create virtual environment in {venv_dir}: {err}\n{out}")
 
@@ -128,18 +140,17 @@ def prepare_fresh_build_environment(tmp_dir: Path, host_python: str) -> dict:
         "pypi.python.org",
     ] + install_reqs
 
-    rc_inst, out_inst, err_inst = run_cmd(cmd_inst)
+    rc_inst, out_inst, err_inst = _run(cmd_inst)
     if rc_inst != 0:
         raise RuntimeError(
             f"Failed to install pinned build tools into fresh environment {venv_python}: {err_inst}\n{out_inst}"
         )
 
-    # Verify interpreter isolation
     verify_code = (
         "import sys, json; "
         "print(json.dumps([sys.executable, sys.prefix, sys.base_prefix]))"
     )
-    rc_chk, out_chk, err_chk = run_cmd([str(venv_python), "-c", verify_code])
+    rc_chk, out_chk, err_chk = _run([str(venv_python), "-c", verify_code])
     if rc_chk != 0:
         raise RuntimeError(f"Failed to verify fresh venv interpreter isolation: {err_chk}")
 
@@ -148,7 +159,7 @@ def prepare_fresh_build_environment(tmp_dir: Path, host_python: str) -> dict:
     if venv_prefix == venv_base_prefix:
         raise RuntimeError(f"Interpreter {venv_python} is not isolated (sys.prefix == sys.base_prefix)")
 
-    rc_ver, out_ver, err_ver = run_cmd([str(venv_python), "-m", "pip", "list", "--format=json"])
+    rc_ver, out_ver, err_ver = _run([str(venv_python), "-m", "pip", "list", "--format=json"])
     if rc_ver != 0:
         raise RuntimeError(f"Failed to list installed package versions in venv: {err_ver}")
 
@@ -170,63 +181,243 @@ def prepare_fresh_build_environment(tmp_dir: Path, host_python: str) -> dict:
     }
 
 
-def extract_source(commit_sha: str, dest_dir: Path, repo_root: Path):
-    """Extract the tracked files of ``commit_sha`` into ``dest_dir`` using ``git archive``.
-    Guarantees that only committed files are present; untracked files are ignored.
+def resolve_source_ref(repo_root: Path, source_ref: str) -> tuple[str, int]:
+    """Resolve a source ref (tag, branch, SHA) to a commit SHA and timestamp.
+
+    Returns (commit_sha, commit_timestamp).
     """
-    # Run `git archive <sha>` and pipe to tar extraction
-    proc = subprocess.run(
-        ["git", "archive", commit_sha],
+    _run = sys.modules[__name__].run_cmd
+
+    # Try rev-parse first; fall back to rev-list -1 if it fails or returns
+    # an empty result (some mocked environments only support one of the two).
+    rc, resolved_sha, err = _run(
+        ["git", "rev-parse", source_ref],
+        cwd=str(repo_root),
+    )
+    if rc != 0 or not resolved_sha.strip():
+        rc, resolved_sha, err = _run(
+            ["git", "rev-list", "-1", source_ref],
+            cwd=str(repo_root),
+        )
+        if rc != 0 or not resolved_sha.strip():
+            raise ValueError(
+                f"Could not resolve source reference '{source_ref}'"
+            )
+
+    rc, ts_str, err = _run(
+        ["git", "log", "-1", "--format=%ct", resolved_sha],
+        cwd=str(repo_root),
+    )
+    if rc != 0:
+        raise ValueError(
+            f"Could not determine commit timestamp for {resolved_sha}: {err}"
+        )
+
+    try:
+        commit_ts = int(ts_str.strip())
+    except ValueError:
+        raise ValueError(f"Invalid commit timestamp: '{ts_str}'")
+
+    return resolved_sha, commit_ts
+
+
+def extract_source(commit_sha: str, dest_dir: Path, repo_root: Path) -> None:
+    """Compatibility wrapper expected by tests."""
+    extract_source_tree(repo_root, commit_sha, dest_dir)
+
+
+
+def extract_source_tree(repo_root: Path, commit_sha: str, dest_dir: Path) -> None:
+    """Extract the exact source tree for a commit via git archive.
+
+    This ensures the build uses the exact source at the requested revision,
+    independent of the current working-tree state. The resulting tree excludes
+    .git/, untracked files, and any local modifications.
+    """
+    # Use git archive to produce a tar stream, then extract it
+    archive_cmd = ["git", "archive", "--format=tar", commit_sha]
+    archive_proc = subprocess.Popen(
+        archive_cmd,
         cwd=str(repo_root),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    if proc.returncode != 0:
-        raise RuntimeError(f"git archive failed for {commit_sha}: {proc.stderr.decode().strip()}")
-    archive_data = proc.stdout
-    with tarfile.open(fileobj=io.BytesIO(archive_data)) as tf:
-        tf.extractall(path=dest_dir)
+    stdout_data, stderr_data = archive_proc.communicate()
+    if archive_proc.returncode != 0:
+        raise RuntimeError(
+            f"git archive failed for commit {commit_sha}: {stderr_data.decode()}"
+        )
+
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    tar_buf = io.BytesIO(stdout_data)
+    with tarfile.open(fileobj=tar_buf, mode="r:") as tf:
+        tf.extractall(path=str(dest_dir))
+
+    # Validate that the extracted source contains pyproject.toml (sanity check)
+    if not (dest_dir / "pyproject.toml").exists():
+        raise RuntimeError(
+            f"Extracted source tree for {commit_sha} does not contain pyproject.toml — "
+            f"the commit may not correspond to a buildable source tree."
+        )
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Verify reproducible builds of CryptoFlex.")
-    parser.add_argument("--source-ref", default="HEAD", help="Git reference (tag, branch, or commit) to verify. Defaults to HEAD.")
-    parser.add_argument("--reference-dir", default=None, help="Path to a directory containing reference wheel and sdist artifacts.")
-    args = parser.parse_args()
+def load_reference_artifacts(reference_dir: Path) -> dict:
+    """Load reference artifacts from the given directory.
 
+    Returns a dict with 'wheel' and 'sdist' sub-dicts containing
+    filename, hash, and size.
+
+    Raises RuntimeError if expected artifacts are missing.
+    """
+    ref_path = Path(reference_dir)
+    if not ref_path.is_dir():
+        raise RuntimeError(f"--reference-dir '{reference_dir}' is not a directory")
+
+    wheels = list(ref_path.glob("*.whl"))
+    sdists = list(ref_path.glob("*.tar.gz"))
+
+    if not wheels:
+        raise RuntimeError(
+            f"No wheel (.whl) artifact found in --reference-dir '{reference_dir}'"
+        )
+    if not sdists:
+        raise RuntimeError(
+            f"No sdist (.tar.gz) artifact found in --reference-dir '{reference_dir}'"
+        )
+
+    wheel_path = wheels[0]
+    sdist_path = sdists[0]
+
+    return {
+        "wheel": {
+            "filename": wheel_path.name,
+            "hash": sha256_file(wheel_path),
+            "size": wheel_path.stat().st_size,
+        },
+        "sdist": {
+            "filename": sdist_path.name,
+            "hash": sha256_file(sdist_path),
+            "size": sdist_path.stat().st_size,
+        },
+    }
+
+
+def compute_verdict(build_results: list, reference: dict | None) -> dict:
+    """Compute the reproducibility verdict from build results and optional reference.
+
+    Returns a dict with verdict fields.
+    """
+    whl_match = (
+        build_results[0]["wheel"]["hash"] == build_results[1]["wheel"]["hash"]
+        and build_results[0]["wheel"]["size"] == build_results[1]["wheel"]["size"]
+    )
+    raw_sdist_match = (
+        build_results[0]["sdist"]["raw"]["hash"] == build_results[1]["sdist"]["raw"]["hash"]
+        and build_results[0]["sdist"]["raw"]["size"] == build_results[1]["sdist"]["raw"]["size"]
+    )
+    normalized_sdist_match = (
+        build_results[0]["sdist"]["normalized"]["hash"] == build_results[1]["sdist"]["normalized"]["hash"]
+        and build_results[0]["sdist"]["normalized"]["size"] == build_results[1]["sdist"]["normalized"]["size"]
+    )
+
+    is_reproducible = whl_match and raw_sdist_match
+
+    reference_parity = None
+    reference_details = None
+    if reference is not None:
+        ref_whl_match = (
+            build_results[0]["wheel"]["hash"] == reference["wheel"]["hash"]
+        )
+        ref_sdist_match = (
+            build_results[0]["sdist"]["raw"]["hash"] == reference["sdist"]["hash"]
+        )
+        reference_parity = ref_whl_match and ref_sdist_match
+
+        if not reference_parity:
+            is_reproducible = False
+
+        reference_details = {
+            "wheel_parity": ref_whl_match,
+            "sdist_parity": ref_sdist_match,
+            "reference_wheel": reference["wheel"],
+            "reference_sdist": reference["sdist"],
+        }
+
+    outcome = "REPRODUCIBLE" if is_reproducible else "NON_REPRODUCIBLE"
+
+    return {
+        "wheel_reproducible": whl_match,
+        "raw_sdist_reproducible": raw_sdist_match,
+        "normalized_sdist_reproducible": normalized_sdist_match,
+        "reference_parity": reference_parity,
+        "reference_details": reference_details,
+        "outcome": outcome,
+    }
+
+
+def parse_args(argv=None):
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Verify reproducible builds of the CryptoFlex package.",
+    )
+    parser.add_argument(
+        "--source-ref",
+        default="HEAD",
+        help=(
+            "Git ref (tag, branch, or SHA) to build from. "
+            "Defaults to HEAD. Example: --source-ref v0.5.3"
+        ),
+    )
+    parser.add_argument(
+        "--reference-dir",
+        default=None,
+        help=(
+            "Directory containing reference artifacts (wheel and sdist) to compare "
+            "against. If omitted, only self-consistency between two fresh builds is "
+            "checked. The local dist/ directory is NEVER implicitly used."
+        ),
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv)
     repo_root = Path(__file__).resolve().parents[1]
     host_python = sys.executable
 
-    # Resolve source reference to full commit SHA
-    rc, resolved_sha, _ = run_cmd(["git", "rev-parse", f"{args.source_ref}^{{commit}}"], cwd=str(repo_root))
-    if rc != 0:
-        print("UNABLE_TO_VERIFY")
-        print(f"Could not resolve source reference '{args.source_ref}'")
-        sys.exit(1)
-    resolved_sha = resolved_sha.strip()
-
-    # Resolve commit timestamp
-    rc, commit_ts_str, _ = run_cmd(["git", "log", "-1", "--format=%ct", resolved_sha], cwd=str(repo_root))
-    if rc != 0:
-        print("UNABLE_TO_VERIFY")
-        print("Could not determine commit timestamp")
-        sys.exit(1)
+    # --- Resolve source ref ---
     try:
-        commit_ts = int(commit_ts_str.strip())
-    except ValueError:
+        commit_sha, commit_ts = resolve_source_ref(repo_root, args.source_ref)
+    except ValueError as e:
         print("UNABLE_TO_VERIFY")
-        print(f"Invalid commit timestamp: '{commit_ts_str}'")
+        print(str(e))
         sys.exit(1)
 
+    print(f"Source ref: {args.source_ref}")
+    print(f"Resolved commit: {commit_sha}")
+    print(f"Commit timestamp (SOURCE_DATE_EPOCH): {commit_ts}")
+
+    # --- Load reference artifacts if requested ---
+    reference = None
+    if args.reference_dir is not None:
+        try:
+            reference = load_reference_artifacts(Path(args.reference_dir))
+            print(f"Reference dir: {args.reference_dir}")
+            print(f"  Wheel: {reference['wheel']['filename']}  SHA-256: {reference['wheel']['hash']}")
+            print(f"  Sdist: {reference['sdist']['filename']}  SHA-256: {reference['sdist']['hash']}")
+        except RuntimeError as e:
+            print("UNABLE_TO_VERIFY")
+            print(str(e))
+            sys.exit(1)
+
+    # --- Perform two independent builds ---
     build_results = []
     build_modes = []
     for i in range(2):
         tmp_dir = Path(tempfile.mkdtemp(prefix=f"cryptoflex_fresh_build_{i+1}_"))
         try:
             src_dir = tmp_dir / "crypto_flex"
-            src_dir.mkdir(parents=True, exist_ok=True)
-            # Extract exact source tree for the resolved commit
-            extract_source(resolved_sha, src_dir, repo_root)
+            extract_source(commit_sha, src_dir, repo_root)
 
             env_info = prepare_fresh_build_environment(tmp_dir, host_python)
             build_python = env_info["python_executable"]
@@ -236,7 +427,7 @@ def main():
             env["SOURCE_DATE_EPOCH"] = str(commit_ts)
             rc, out, err = run_cmd(
                 [
-                    str(build_python),
+                    build_python,
                     "-m",
                     "build",
                     "--sdist",
@@ -302,65 +493,54 @@ def main():
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    whl_match = (
-        build_results[0]["wheel"]["hash"] == build_results[1]["wheel"]["hash"]
-        and build_results[0]["wheel"]["size"] == build_results[1]["wheel"]["size"]
-    )
-    raw_sdist_match = (
-        build_results[0]["sdist"]["raw"]["hash"] == build_results[1]["sdist"]["raw"]["hash"]
-        and build_results[0]["sdist"]["raw"]["size"] == build_results[1]["sdist"]["raw"]["size"]
-    )
-    normalized_sdist_match = (
-        build_results[0]["sdist"]["normalized"]["hash"] == build_results[1]["sdist"]["normalized"]["hash"]
-        and build_results[0]["sdist"]["normalized"]["size"] == build_results[1]["sdist"]["normalized"]["size"]
-    )
-
-    is_reproducible = whl_match and raw_sdist_match
-
-    # Reference directory handling
-    reference_parity = None
-    if args.reference_dir:
-        ref_dir = Path(args.reference_dir)
-        if not ref_dir.is_dir():
-            print("UNABLE_TO_VERIFY")
-            print(f"Reference directory {ref_dir} does not exist")
-            sys.exit(1)
-        ref_wheels = list(ref_dir.glob("*.whl"))
-        ref_sdists = list(ref_dir.glob("*.tar.gz"))
-        if not ref_wheels or not ref_sdists:
-            print("UNABLE_TO_VERIFY")
-            print("Reference directory missing required .whl or .tar.gz files")
-            sys.exit(1)
-        ref_wheel_hash = sha256_file(ref_wheels[0])
-        ref_sdist_hash = sha256_file(ref_sdists[0])
-        wheel_ref_match = (ref_wheel_hash == build_results[0]["wheel"]["hash"])
-        sdist_ref_match = (ref_sdist_hash == build_results[0]["sdist"]["raw"]["hash"])
-        reference_parity = wheel_ref_match and sdist_ref_match
-        if not reference_parity:
-            is_reproducible = False
-
-    outcome = "REPRODUCIBLE" if is_reproducible else "NON_REPRODUCIBLE"
+    # --- Compute verdict ---
+    verdict = compute_verdict(build_results, reference)
+    outcome = verdict["outcome"]
     print(outcome)
+
+    if not verdict["wheel_reproducible"]:
+        print(
+            f"WHEEL MISMATCH: build1={build_results[0]['wheel']['hash']} "
+            f"build2={build_results[1]['wheel']['hash']}"
+        )
+    if not verdict["raw_sdist_reproducible"]:
+        print(
+            f"SDIST MISMATCH: build1={build_results[0]['sdist']['raw']['hash']} "
+            f"build2={build_results[1]['sdist']['raw']['hash']}"
+        )
+    if verdict["reference_parity"] is False:
+        details = verdict["reference_details"]
+        if not details["wheel_parity"]:
+            print(
+                f"REFERENCE WHEEL PARITY FAILED: "
+                f"reference={details['reference_wheel']['hash']} "
+                f"rebuilt={build_results[0]['wheel']['hash']}"
+            )
+        if not details["sdist_parity"]:
+            print(
+                f"REFERENCE SDIST PARITY FAILED: "
+                f"reference={details['reference_sdist']['hash']} "
+                f"rebuilt={build_results[0]['sdist']['raw']['hash']}"
+            )
 
     summary = {
         "source_ref": args.source_ref,
-        "resolved_commit_sha": resolved_sha,
+        "resolved_commit_sha": commit_sha,
         "commit_timestamp": commit_ts,
         "pinned_toolchain": PINNED_TOOLS,
         "execution_modes": build_modes,
-        "wheel_reproducible": whl_match,
-        "raw_sdist_reproducible": raw_sdist_match,
-        "normalized_sdist_reproducible": normalized_sdist_match,
-        "reference_dir": args.reference_dir,
-        "reference_parity": reference_parity,
+        "wheel_reproducible": verdict["wheel_reproducible"],
+        "raw_sdist_reproducible": verdict["raw_sdist_reproducible"],
+        "normalized_sdist_reproducible": verdict["normalized_sdist_reproducible"],
+        "reference_parity": verdict["reference_parity"],
+        "reference_details": verdict["reference_details"],
         "builds": build_results,
         "outcome": outcome,
     }
     print("\n---SUMMARY---")
     print(json.dumps(summary, indent=2))
-    if not is_reproducible:
+    if outcome != "REPRODUCIBLE":
         sys.exit(1)
-
 
 if __name__ == "__main__":
     main()
