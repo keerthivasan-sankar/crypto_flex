@@ -160,6 +160,8 @@ def test_git_archive_excludes_untracked(monkeypatch, tmp_path, capsys):
     repo = tmp_path / "repo"
     repo.mkdir()
     subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE)
+    subprocess.run(["git", "config", "user.email", "ci@example.com"], cwd=repo, check=True, stdout=subprocess.PIPE)
+    subprocess.run(["git", "config", "user.name", "CI Runner"], cwd=repo, check=True, stdout=subprocess.PIPE)
     (repo / "tracked.txt").write_text("tracked")
     subprocess.run(["git", "add", "."], cwd=repo, check=True, stdout=subprocess.PIPE)
     subprocess.run(["git", "commit", "-m", "init"], cwd=repo, check=True, stdout=subprocess.PIPE)
