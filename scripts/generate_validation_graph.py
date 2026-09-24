@@ -38,23 +38,22 @@ def run_pytest(repo_root: str) -> dict:
     )
     output = result.stdout + result.stderr
 
-    # Parse summary line: "128 passed in 9.25s" or "127 passed, 1 failed in 5s"
-    summary_match = re.search(
-        r"(\d+)\s+passed(?:,\s*(\d+)\s+failed)?(?:,\s*(\d+)\s+skipped)?\s+in",
-        output,
-    )
-    passed = int(summary_match.group(1)) if summary_match else 0
-    failed = int(summary_match.group(2) or 0) if summary_match else 0
-    skipped = int(summary_match.group(3) or 0) if summary_match else 0
+    # Parse summary counts
+    passed_m = re.search(r"(\d+)\s+passed", output)
+    failed_m = re.search(r"(\d+)\s+failed", output)
+    skipped_m = re.search(r"(\d+)\s+skipped", output)
+    passed = int(passed_m.group(1)) if passed_m else 0
+    failed = int(failed_m.group(1)) if failed_m else 0
+    skipped = int(skipped_m.group(1)) if skipped_m else 0
     total = passed + failed + skipped
 
     # Parse per-file counts from verbose lines like:
     # tests/test_header.py::test_rejects_bad_magic PASSED [ 39%]
-    # tests\test_header.py::test_rejects_bad_magic PASSED [  0%]
+    # tests/adversarial/test_mlkem_decapsulation.py::test_foo PASSED [  1%]
     file_counts: dict[str, dict[str, int]] = {}
     for line in output.splitlines():
         line = line.strip()
-        m = re.search(r"tests[/\\](test_\w+)\.py::\S+\s+(PASSED|FAILED|SKIPPED)", line)
+        m = re.search(r"tests[/\\](?:.*?/)?(test_\w+)\.py::.*?\s+(PASSED|FAILED|SKIPPED)", line)
         if m:
             fname = m.group(1)
             status = m.group(2).lower()
@@ -65,9 +64,13 @@ def run_pytest(repo_root: str) -> dict:
     # Map test files to human-readable category names
     category_map = {
         "test_adversarial": "Adversarial",
+        "test_mlkem_decapsulation": "Adversarial (ML-KEM)",
+        "test_pqc_private_key": "Adversarial (PQC Keys)",
+        "test_pqc_unavailable": "Adversarial (PQC Fallback)",
         "test_cli": "CLI",
         "test_combiner": "Combiner",
         "test_cross_version": "Cross-Version",
+        "test_downgrade_rollback_matrix": "Downgrade Rollback Matrix",
         "test_encrypt_decrypt": "Encrypt/Decrypt",
         "test_ephemeral": "Ephemeral",
         "test_fuzz_header": "Fuzz (Hypothesis)",
@@ -75,6 +78,9 @@ def run_pytest(repo_root: str) -> dict:
         "test_integration": "Integration",
         "test_keystore": "Keystore",
         "test_policy": "Policy Engine",
+        "test_policy_schema": "Policy Schema",
+        "test_reproducibility": "Reproducibility",
+        "test_reproducibility_verifier": "Reproducibility Verifier",
         "test_sources": "KEM Sources",
         "test_streaming": "Streaming AEAD",
         "test_utils": "Utilities",
