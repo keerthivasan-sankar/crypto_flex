@@ -21,23 +21,40 @@ numbers** that don't necessarily move together:
 - documented memory-hygiene and security limitations accurately
 
 ### Reproducibility / Build Integrity
-- fresh isolated virtual-environment reproducibility verification
+- CryptoFlex reproducibility verification hardening completed
+- current main commit: `a5cb9d80c16b25624243ad1f791c0186afdd7e00` (`origin/main` synchronized)
+- reference build uses a fresh isolated virtual environment (`.build_venv`)
 - pinned build toolchain:
   - pip 26.2.1
+  - build 1.6.0
   - setuptools 84.0.0
   - wheel 0.48.0
-  - build 1.6.0
-- byte-for-byte reproducibility verification for wheel and sdist artifacts
-- deterministic timestamp normalization using SOURCE_DATE_EPOCH
+- source tree extraction uses tracked Git content through git archive
+- SOURCE_DATE_EPOCH is derived from the resolved commit timestamp
+- byte-for-byte reproducibility verification for wheel and sdist artifacts:
+  - wheel reproducibility: verified
+  - raw sdist reproducibility: verified
+  - normalized sdist diagnostic: verified
+  - reference artifact parity: verified
 
 ### Supply Chain / SBOM
 - clarified build-environment SBOM scope
 - explicitly distinguished build-environment SBOM from product/runtime SBOM
 - documented external native liboqs boundary
+- GitHub Actions Build Package workflow (Run ID: 36008675386, Result: SUCCESS):
+  - Verify Reproducibility hard release gate: SUCCESS
+  - CycloneDX SBOM generation: SUCCESS
+  - SHA256SUMS generation: SUCCESS
+  - Provenance attestation: SUCCESS
+  - Artifact upload: SUCCESS
 
-### Validation
-- 140 automated tests passing
-- reproducibility verification passing
+### Validation & Release Audit
+- local test result: 194 collected, 176 passed, 18 skipped, 0 failed
+- the 18 skipped tests are related to the optional native liboqs PQC backend not being installed locally
+- py_compile (`scripts/verify_reproducibility.py`): PASS
+- git diff --check: PASS
+- tracked secret/token scan: PASS
+- absolute local-path scan: PASS
 
 ## [0.5.2] - Release Candidate
 
