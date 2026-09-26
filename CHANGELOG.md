@@ -12,6 +12,28 @@ numbers** that don't necessarily move together:
   change for anyone with existing encrypted files and will always be
   called out explicitly here.
 
+## [0.5.4] - September 2026
+
+### Security / Build Integrity Fix
+- **Remove `--trusted-host` from `prepare_fresh_build_environment()`**
+  ([`scripts/verify_reproducibility.py`](scripts/verify_reproducibility.py)):
+  Removed the three `--trusted-host pypi.org`, `--trusted-host files.pythonhosted.org`,
+  and `--trusted-host pypi.python.org` arguments that were passed to pip during fresh
+  isolated build environment setup. These flags are unnecessary on the GitHub Actions
+  runner (which has a correctly configured CA bundle) and unnecessarily weaken normal
+  HTTPS certificate verification. Normal TLS verification is now used unconditionally.
+- No certificate-bypass mechanism was substituted.
+- Reproducibility scope remains unchanged: same-runner reproducibility against reference
+  artifacts using fresh isolated build environments with pinned build toolchain.
+
+### Validation
+- pytest: 194 collected, 194 passed, 0 failed, 0 skipped
+- `python -m py_compile scripts/verify_reproducibility.py`: PASS
+- `git diff --check`: PASS
+- Only `scripts/verify_reproducibility.py`, `pyproject.toml`, `README.md`, and
+  `CHANGELOG.md` changed; no source code, cryptographic implementation, tests,
+  CI workflow logic, or packaging configuration modified.
+
 ## [0.5.3] - September 2026
 
 ### Security / Hardening

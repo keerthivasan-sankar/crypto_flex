@@ -132,12 +132,6 @@ def prepare_fresh_build_environment(tmp_dir: Path, host_python: str) -> dict:
         "pip",
         "install",
         "--quiet",
-        "--trusted-host",
-        "pypi.org",
-        "--trusted-host",
-        "files.pythonhosted.org",
-        "--trusted-host",
-        "pypi.python.org",
     ] + install_reqs
 
     rc_inst, out_inst, err_inst = _run(cmd_inst)

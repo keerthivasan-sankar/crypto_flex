@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 
-Version: 0.5.3
+Version: 0.5.4
 Status: RELEASE CANDIDATE / research prototype
 
 A local-first crypto-agility policy engine for Python.
