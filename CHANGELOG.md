@@ -28,6 +28,7 @@ numbers** that don't necessarily move together:
   - deterministic raw sdist output within the controlled build procedure
   - parity between the verifier rebuild and the release-run reference artifacts
   This verification does not constitute independent multi-machine reproduction, an independent cryptographic audit, or a formal supply-chain security certification.
+- **Independent Reproduction Framework**: Documented the independent multi-machine reproduction procedure and evidence template in [`docs/PACKAGING.md`](docs/PACKAGING.md#3-independent-multi-machine-reproduction-procedure) and provided the reproduction helper [`scripts/reproduce_release.py`](scripts/reproduce_release.py). Defined the distinction between controlled pipeline reproducibility and genuine independent reproduction.
 - **Developer Troubleshooting Note**: If local development environments (e.g., Windows) encounter CA certificate verification issues during fresh virtual environment creation, they should be resolved via the machine's trusted certificate store or network configuration rather than disabling TLS verification.
 
 ### Validation

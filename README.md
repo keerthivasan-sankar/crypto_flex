@@ -221,6 +221,8 @@ This verification does **not** constitute:
 - an independent cryptographic audit
 - a formal supply-chain security certification
 
+The repository provides a documented procedure for independent multi-machine reproduction in [docs/PACKAGING.md](docs/PACKAGING.md#3-independent-multi-machine-reproduction-procedure) and a reproduction helper in [`scripts/reproduce_release.py`](scripts/reproduce_release.py). Independent reproduction is considered demonstrated only when an external machine/environment produces matching artifacts for the specified release.
+
 ---
 
 ## Academic Reference

@@ -24,6 +24,8 @@ This verification does **not** constitute:
 - an independent cryptographic audit
 - a formal supply-chain security certification
 
+A documented procedure and evidence framework for independent multi-machine reproduction is provided in [docs/PACKAGING.md](docs/PACKAGING.md#3-independent-multi-machine-reproduction-procedure) and [`scripts/reproduce_release.py`](scripts/reproduce_release.py). Independent reproduction is considered demonstrated only when an external machine/environment produces matching artifacts for the specified release.
+
 ### Developer Troubleshooting: TLS / CA Verification
 Build environment isolation uses normal HTTPS certificate verification without `--trusted-host` or TLS bypasses. If a local developer environment (such as a local Windows host) encounters CA certificate verification errors during fresh virtual environment setup, resolve them through the host machine's trusted certificate store or network configuration rather than disabling TLS verification.
 
