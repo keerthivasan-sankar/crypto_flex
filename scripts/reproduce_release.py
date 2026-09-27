@@ -16,12 +16,15 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import platform
 import shutil
+import ssl
 import sys
 import tempfile
+import textwrap
 from pathlib import Path
 
 # Ensure repository root is on sys.path
@@ -34,7 +37,6 @@ from scripts.verify_reproducibility import (
     extract_source_tree,
     load_reference_artifacts,
     prepare_fresh_build_environment,
-    resolve_source_ref,
     run_cmd,
     sha256_file,
 )
@@ -56,6 +58,50 @@ OFFICIAL_RELEASE_REFERENCES: dict[str, dict] = {
         },
     }
 }
+
+
+def resolve_target_commit(repo_root: Path, target_ref: str) -> tuple[str, int]:
+    """Resolve target ref to the underlying commit SHA and commit timestamp.
+
+    Ensures annotated tag objects (e.g. v0.5.4 tag object 15392d57...) are dereferenced
+    to their target commit object (72ea0177...).
+    """
+    rc, resolved_sha, err = run_cmd(
+        ["git", "rev-parse", f"{target_ref}^{{commit}}"],
+        cwd=str(repo_root),
+    )
+    if rc != 0 or not resolved_sha.strip():
+        rc, resolved_sha, err = run_cmd(
+            ["git", "rev-list", "-1", target_ref],
+            cwd=str(repo_root),
+        )
+        if rc != 0 or not resolved_sha.strip():
+            raise ValueError(f"Could not resolve commit for target reference '{target_ref}': {err}")
+
+    commit_sha = resolved_sha.strip()
+
+    # Safety check for known releases (e.g. v0.5.4)
+    if target_ref in OFFICIAL_RELEASE_REFERENCES:
+        expected_sha = OFFICIAL_RELEASE_REFERENCES[target_ref]["commit_sha"]
+        if commit_sha != expected_sha:
+            raise ValueError(
+                f"Resolved commit SHA '{commit_sha}' for target '{target_ref}' "
+                f"does not match expected official commit SHA '{expected_sha}'"
+            )
+
+    rc, ts_str, err = run_cmd(
+        ["git", "log", "-1", "--format=%ct", commit_sha],
+        cwd=str(repo_root),
+    )
+    if rc != 0 or not ts_str.strip():
+        raise ValueError(f"Could not determine commit timestamp for {commit_sha}: {err}")
+
+    try:
+        commit_ts = int(ts_str.strip())
+    except ValueError:
+        raise ValueError(f"Invalid commit timestamp '{ts_str}' for {commit_sha}")
+
+    return commit_sha, commit_ts
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -97,6 +143,49 @@ def get_environment_metadata(host_python: str) -> dict:
     }
 
 
+def ensure_windows_system_ca_bundle(ca_dir: Path | None = None) -> Path | None:
+    """On Windows systems, export host trusted System ROOT and CA certificates from
+    Windows CryptoAPI (via standard library `ssl.enum_certificates`) into a temporary
+    PEM bundle file and configure standard certificate environment variables.
+
+    This ensures pip and OpenSSL inside newly spawned bare virtual environments use the host's
+    actual system-trusted root certificates for genuine HTTPS TLS verification without requiring
+    --trusted-host or TLS bypass flags.
+    """
+    if not hasattr(ssl, "enum_certificates") or platform.system() != "Windows":
+        return None
+
+    try:
+        root_certs = ssl.enum_certificates("ROOT")
+        ca_certs = ssl.enum_certificates("CA")
+        all_certs = root_certs + ca_certs
+        if not all_certs:
+            return None
+
+        pems = []
+        for der, _type, _trust in all_certs:
+            if isinstance(der, bytes):
+                b64 = base64.b64encode(der).decode("ascii")
+                wrapped = "\n".join(textwrap.wrap(b64, 64))
+                pems.append(f"-----BEGIN CERTIFICATE-----\n{wrapped}\n-----END CERTIFICATE-----")
+
+        if not pems:
+            return None
+
+        target_dir = ca_dir or (Path(tempfile.gettempdir()) / "cryptoflex_ca_bundle")
+        target_dir.mkdir(parents=True, exist_ok=True)
+        bundle_path = target_dir / "win_sys_ca_bundle.pem"
+        bundle_path.write_text("\n".join(pems), encoding="utf-8")
+
+        bundle_str = str(bundle_path)
+        os.environ["SSL_CERT_FILE"] = bundle_str
+        os.environ["PIP_CERT"] = bundle_str
+        os.environ["REQUESTS_CA_BUNDLE"] = bundle_str
+        return bundle_path
+    except Exception:
+        return None
+
+
 def reproduce_build(
     repo_root: Path,
     target_ref: str,
@@ -110,7 +199,7 @@ def reproduce_build(
     python_exe = host_python or sys.executable
     env_metadata = get_environment_metadata(python_exe)
 
-    commit_sha, commit_ts = resolve_source_ref(repo_root, target_ref)
+    commit_sha, commit_ts = resolve_target_commit(repo_root, target_ref)
 
     # Resolve reference metadata if available
     reference = None
@@ -127,6 +216,9 @@ def reproduce_build(
     try:
         src_dir = tmp_dir / "crypto_flex"
         extract_source_tree(repo_root, commit_sha, src_dir)
+
+        # Configure host Windows System CA certificates if applicable
+        ensure_windows_system_ca_bundle()
 
         # Fresh isolated build environment with pinned toolchain
         build_env = prepare_fresh_build_environment(tmp_dir, python_exe)
