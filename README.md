@@ -180,7 +180,7 @@ For complete technical details, see:
 
 ## Testing
 
-194 automated tests covering unit, integration, adversarial, property-based (Hypothesis), reproducibility, and migration cases (194 passed, 0 failed as of v0.5.3).
+194 automated tests covering unit, integration, adversarial, property-based (Hypothesis), reproducibility, and migration cases (194 passed, 0 failed as of v0.5.4).
 
 
 ```bash
@@ -208,6 +208,18 @@ To regenerate this graph from the actual test suite:
 ```bash
 python scripts/generate_validation_graph.py
 ```
+
+### Reproducibility Scope
+
+CryptoFlex v0.5.4 is reproducible within the controlled GitHub Actions build environment using the pinned build toolchain and isolated build environments. The release hard gate verifies:
+- deterministic wheel output within the controlled build procedure
+- deterministic raw sdist output within the controlled build procedure
+- parity between the verifier rebuild and the release-run reference artifacts
+
+This verification does **not** constitute:
+- independent-machine reproduction
+- an independent cryptographic audit
+- a formal supply-chain security certification
 
 ---
 

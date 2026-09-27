@@ -42,7 +42,7 @@ for anything more urgent.
 
 | Version | Supported | Notes |
 |---------|-----------|-------|
-| 0.5.x   | Supported     | Release Candidate: v0.5.3 |
+| 0.5.x   | Supported     | Release Candidate: v0.5.4 |
 | 0.4.x   | Maintenance   | Legacy v2 header format (v0.4.1) |
 | 0.3.x   | End of life   | Legacy v2 header format |
 | 0.2.x   | End of life   | Initial security fixes |
@@ -69,7 +69,7 @@ CryptoFlex performs best-effort zeroization of mutable secret buffers that it di
 
 `cryptoflex` has not yet undergone an independent third-party security
 audit — see [`TECHNICAL_REVIEW_1.md`](TECHNICAL_REVIEW_1.md) for a fuller
-picture of what's been verified so far (Hypothesis fuzzing, 140 automated tests, CI, two
+picture of what's been verified so far (Hypothesis fuzzing, 194 automated tests, CI, two
 previously-found-and-fixed validation bugs) versus what hasn't
 (formal independent security audit and evaluation of side-channel properties across the Python and native cryptographic layers). Please keep that context in mind
 both when deciding whether to rely on this library for anything

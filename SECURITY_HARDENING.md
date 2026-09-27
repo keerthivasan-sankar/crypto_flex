@@ -1,6 +1,6 @@
 # Security Hardening Evidence
 
-This document records the hardening actions performed for CryptoFlex v0.5.2.
+This document records the hardening actions and scope boundaries for CryptoFlex v0.5.4.
 
 ## Added Test Helpers
 - `tests/adversarial/test_pqc_unavailable.py` verifies graceful handling when liboqs is disabled via `CRYPTOFLEX_DISABLE_PQC=1`.
@@ -9,9 +9,23 @@ This document records the hardening actions performed for CryptoFlex v0.5.2.
 ## Test Organization
 - New adversarial tests are placed under `tests/adversarial/` to keep the main test suite tidy.
 
-## Reproducibility Verification
-- Automated double-build verification script (`scripts/verify_reproducibility.py`) creates separate fresh build virtual environments populated with pinned build dependencies (`pip==26.2.1`, `setuptools==84.0.0`, `wheel==0.48.0`, `build==1.6.0`).
-- Verifies byte-for-byte SHA-256 identity across isolated builds for both wheel (`.whl`) and source distribution (`.tar.gz`) artifacts using deterministic timestamp normalization (`SOURCE_DATE_EPOCH`).
+## Reproducibility Verification & Scope
+CryptoFlex v0.5.4 is reproducible within the controlled GitHub Actions build environment using the pinned build toolchain (`pip==26.2.1`, `setuptools==84.0.0`, `wheel==0.48.0`, `build==1.6.0`) and isolated build environments.
+
+The automated double-build verification script (`scripts/verify_reproducibility.py`) serves as a release hard gate verifying:
+- deterministic wheel output within the controlled build procedure
+- deterministic raw sdist output within the controlled build procedure
+- parity between the verifier rebuild and the release-run reference artifacts
+
+### Reproducibility Scope
+Reproducibility is verified in the controlled GitHub Actions release environment using pinned tooling and fresh isolated environments.
+This verification does **not** constitute:
+- independent-machine reproduction
+- an independent cryptographic audit
+- a formal supply-chain security certification
+
+### Developer Troubleshooting: TLS / CA Verification
+Build environment isolation uses normal HTTPS certificate verification without `--trusted-host` or TLS bypasses. If a local developer environment (such as a local Windows host) encounters CA certificate verification errors during fresh virtual environment setup, resolve them through the host machine's trusted certificate store or network configuration rather than disabling TLS verification.
 
 ## Memory Lifecycle & Best-Effort Zeroization
 - CryptoFlex performs best-effort zeroization of mutable secret buffers that it directly controls (e.g., derived root keys, wrapping keys, and temporary serialized private key buffers during keystore export/import and encryption/decryption routines).

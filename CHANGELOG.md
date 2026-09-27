@@ -23,8 +23,12 @@ numbers** that don't necessarily move together:
   runner (which has a correctly configured CA bundle) and unnecessarily weaken normal
   HTTPS certificate verification. Normal TLS verification is now used unconditionally.
 - No certificate-bypass mechanism was substituted.
-- Reproducibility scope remains unchanged: same-runner reproducibility against reference
-  artifacts using fresh isolated build environments with pinned build toolchain.
+- **Reproducibility Scope**: CryptoFlex v0.5.4 is reproducible within the controlled GitHub Actions build environment using the pinned build toolchain and isolated build environments. The release hard gate verifies:
+  - deterministic wheel output within the controlled build procedure
+  - deterministic raw sdist output within the controlled build procedure
+  - parity between the verifier rebuild and the release-run reference artifacts
+  This verification does not constitute independent multi-machine reproduction, an independent cryptographic audit, or a formal supply-chain security certification.
+- **Developer Troubleshooting Note**: If local development environments (e.g., Windows) encounter CA certificate verification issues during fresh virtual environment creation, they should be resolved via the machine's trusted certificate store or network configuration rather than disabling TLS verification.
 
 ### Validation
 - pytest: 194 collected, 194 passed, 0 failed, 0 skipped
