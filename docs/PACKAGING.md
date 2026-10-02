@@ -125,7 +125,11 @@ On an independent machine:
    ```
 
 ### 3.5 Automated Reproduction Helper
-The repository provides a reproduction helper script (`scripts/reproduce_release.py`) that automates steps 2–6 in an isolated temporary directory:
+The repository provides a reproduction helper script (`scripts/reproduce_release.py`) that automates steps 2–6 in an isolated temporary directory.
+
+The helper injects a build-time PEP 517 backend wrapper hook that canonicalizes packaging metadata attributes: LF line endings in metadata files; wheel ZIP file permission attributes (`create_system=3`, `external_attr` normalized to POSIX permission masks); and the sdist gzip container OS byte set to `0x03` (Unix). Under the controlled reproduction procedure this achieves 100% byte-for-byte wheel parity and raw TAR payload parity with the reference artifacts listed in Section 3.2. The underlying cryptographic implementation was not changed by this tooling work.
+
+> **Note:** Cross-platform compressed `.tar.gz` payload differences between Windows and Linux native `zlib` implementations (differing LZSS match tie-breaking in MSVC- vs. GCC-compiled `zlib`) cannot be controlled through Python-level parameters and are not claimed as resolved.
 
 ```bash
 # Build and verify against official v0.5.4 baseline:
