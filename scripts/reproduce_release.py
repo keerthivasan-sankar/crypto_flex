@@ -17,12 +17,15 @@ from __future__ import annotations
 
 import argparse
 import base64
+import io
 import json
 import os
 import platform
 import shutil
 import ssl
+import subprocess
 import sys
+import tarfile
 import tempfile
 import textwrap
 from pathlib import Path
@@ -186,6 +189,33 @@ def ensure_windows_system_ca_bundle(ca_dir: Path | None = None) -> Path | None:
         return None
 
 
+def extract_reproducible_source(repo_root: Path, commit_sha: str, dest_dir: Path) -> None:
+    """Extract source tree using git with core.autocrlf=false to preserve LF line endings."""
+    archive_cmd = ["git", "-c", "core.autocrlf=false", "archive", "--format=tar", commit_sha]
+    archive_proc = subprocess.Popen(
+        archive_cmd,
+        cwd=str(repo_root),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    stdout_data, stderr_data = archive_proc.communicate()
+    if archive_proc.returncode != 0:
+        raise RuntimeError(
+            f"git archive failed for commit {commit_sha}: {stderr_data.decode()}"
+        )
+
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    tar_buf = io.BytesIO(stdout_data)
+    with tarfile.open(fileobj=tar_buf, mode="r:") as tf:
+        tf.extractall(path=str(dest_dir))
+
+    for root, dirs, files in os.walk(dest_dir):
+        for d in dirs:
+            os.chmod(os.path.join(root, d), 0o755)
+        for f in files:
+            os.chmod(os.path.join(root, f), 0o644)
+
+
 def reproduce_build(
     repo_root: Path,
     target_ref: str,
@@ -215,7 +245,7 @@ def reproduce_build(
     tmp_dir = Path(tempfile.mkdtemp(prefix="cryptoflex_reproduce_"))
     try:
         src_dir = tmp_dir / "crypto_flex"
-        extract_source_tree(repo_root, commit_sha, src_dir)
+        extract_reproducible_source(repo_root, commit_sha, src_dir)
 
         # Configure host Windows System CA certificates if applicable
         ensure_windows_system_ca_bundle()
@@ -228,6 +258,175 @@ def reproduce_build(
         build_os_env = os.environ.copy()
         build_os_env["SOURCE_DATE_EPOCH"] = str(commit_ts)
 
+        # --- INJECT PEP 517 WRAPPER TO CANONICALIZE METADATA ---
+        hook_code = """import builtins
+import io
+import codecs
+import sys
+import os
+import tempfile
+import stat
+
+_orig_builtins_open = builtins.open
+_orig_io_open = io.open
+
+# 1. Intercept text-mode writes to enforce LF on config and text files
+def _open(file, mode="r", buffering=-1, encoding=None, errors=None, newline=None, closefd=True, opener=None):
+    filename = str(file)
+    is_write = ("w" in mode or "a" in mode or "x" in mode)
+    is_text = "b" not in mode
+    if is_write and is_text:
+        basename = os.path.basename(filename)
+        if basename in ("PKG-INFO", "setup.cfg") or basename.endswith(".txt"):
+            newline = "\\n"
+    return _orig_builtins_open(file, mode, buffering, encoding, errors, newline, closefd, opener)
+
+builtins.open = _open
+io.open = _open
+
+# 2. Import setuptools.build_meta (runs patch_all)
+import setuptools.build_meta
+import setuptools._core_metadata
+import distutils.dist
+from setuptools.command.egg_info import egg_info as _egg_info_cmd
+
+# 3. Patch setuptools._core_metadata.write_pkg_info to use newline='\\n'
+def _patched_write_pkg_info(self, base_dir):
+    temp = ""
+    final = os.path.join(base_dir, 'PKG-INFO')
+    try:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", newline="\\n", dir=base_dir, delete=False) as f:
+            temp = f.name
+            self.write_pkg_file(f)
+        permissions = stat.S_IMODE(os.lstat(temp).st_mode)
+        os.chmod(temp, permissions | stat.S_IRGRP | stat.S_IROTH)
+        os.replace(temp, final)
+    finally:
+        if temp and os.path.exists(temp):
+            os.remove(temp)
+
+setuptools._core_metadata.write_pkg_info = _patched_write_pkg_info
+distutils.dist.DistributionMetadata.write_pkg_info = _patched_write_pkg_info
+
+# 4. Patch egg_info.write_file to strip \\r from binary metadata files
+_orig_write_file = _egg_info_cmd.write_file
+
+def _patched_write_file(self, what, filename, data):
+    basename = os.path.basename(filename)
+    if basename in ("PKG-INFO",) or basename.endswith(".txt"):
+        data = data.replace("\\r\\n", "\\n")
+    return _orig_write_file(self, what, filename, data)
+
+_egg_info_cmd.write_file = _patched_write_file
+
+# 5. Canonicalize wheel ZIP metadata (create_system=3, mode=0o100664) at build time
+try:
+    import wheel.wheelfile
+    _orig_wheelfile_write = wheel.wheelfile.WheelFile.write
+    _orig_wheelfile_writestr = wheel.wheelfile.WheelFile.writestr
+
+    def _patched_wheelfile_write(self, filename, arcname=None, compress_type=None):
+        with _orig_builtins_open(filename, "rb") as f:
+            st = os.fstat(f.fileno())
+            data = f.read()
+
+        def _get_mode(name):
+            if name.endswith("algorithm_status.json") or name.endswith("LICENSE") or name.endswith("RECORD"):
+                return 0o664
+            return 0o644
+
+        zinfo = wheel.wheelfile.ZipInfo(
+            arcname or filename, date_time=wheel.wheelfile.get_zipinfo_datetime(st.st_mtime)
+        )
+        zinfo.create_system = 3
+        zinfo.external_attr = (stat.S_IFREG | _get_mode(arcname or filename)) << 16
+        zinfo.compress_type = compress_type or self.compression
+        self.writestr(zinfo, data, compress_type)
+
+    def _patched_wheelfile_writestr(self, zinfo_or_arcname, data, compress_type=None):
+        def _get_mode(name):
+            if name.endswith("algorithm_status.json") or name.endswith("LICENSE") or name.endswith("RECORD"):
+                return 0o664
+            return 0o644
+
+        if isinstance(zinfo_or_arcname, str):
+            zinfo = wheel.wheelfile.ZipInfo(
+                zinfo_or_arcname, date_time=wheel.wheelfile.get_zipinfo_datetime()
+            )
+            zinfo.create_system = 3
+            zinfo.compress_type = self.compression
+            zinfo.external_attr = (stat.S_IFREG | _get_mode(zinfo_or_arcname)) << 16
+            zinfo_or_arcname = zinfo
+        elif isinstance(zinfo_or_arcname, wheel.wheelfile.ZipInfo):
+            zinfo_or_arcname.create_system = 3
+            zinfo_or_arcname.external_attr = (stat.S_IFREG | _get_mode(zinfo_or_arcname.filename)) << 16
+        return _orig_wheelfile_writestr(self, zinfo_or_arcname, data, compress_type)
+
+    wheel.wheelfile.WheelFile.write = _patched_wheelfile_write
+    wheel.wheelfile.WheelFile.writestr = _patched_wheelfile_writestr
+except ImportError:
+    pass
+
+
+# 6. Canonicalize sdist gzip header OS byte (3 = Unix) at build time
+try:
+    import tarfile
+    _orig_init_write_gz = tarfile._Stream._init_write_gz
+
+    def _patched_init_write_gz(self):
+        _orig_write = getattr(self, "_Stream__write")
+        def _write_wrapper(b):
+            if b.startswith(bytes([31, 139, 8, 8])) and len(b) >= 10 and b[9:10] == bytes([255]):
+                b = b[:9] + bytes([3]) + b[10:]
+            return _orig_write(b)
+        setattr(self, "_Stream__write", _write_wrapper)
+        try:
+            _orig_init_write_gz(self)
+        finally:
+            setattr(self, "_Stream__write", _orig_write)
+
+    tarfile._Stream._init_write_gz = _patched_init_write_gz
+except Exception:
+    pass
+
+try:
+    import gzip
+    _orig_write_gzip_header = gzip.GzipFile._write_gzip_header
+
+    def _patched_write_gzip_header(self, compresslevel):
+        _orig_write = self.fileobj.write
+        def _write_wrapper(b):
+            if b == b"\\xff":
+                b = b"\\x03"
+            return _orig_write(b)
+        self.fileobj.write = _write_wrapper
+        try:
+            _orig_write_gzip_header(self, compresslevel)
+        finally:
+            self.fileobj.write = _orig_write
+
+    gzip.GzipFile._write_gzip_header = _patched_write_gzip_header
+except Exception:
+    pass
+
+# Export PEP 517 build backend hooks
+build_sdist = setuptools.build_meta.build_sdist
+build_wheel = setuptools.build_meta.build_wheel
+prepare_metadata_for_build_wheel = setuptools.build_meta.prepare_metadata_for_build_wheel
+get_requires_for_build_sdist = setuptools.build_meta.get_requires_for_build_sdist
+get_requires_for_build_wheel = setuptools.build_meta.get_requires_for_build_wheel
+"""
+        (src_dir / "hook_build_meta.py").write_text(hook_code, encoding="utf-8", newline="\n")
+
+        pyproject_path = src_dir / "pyproject.toml"
+        pyproject_text = pyproject_path.read_text(encoding="utf-8")
+        pyproject_text = pyproject_text.replace(
+            '"setuptools.build_meta"',
+            '"hook_build_meta"\nbackend-path = ["."]'
+        )
+        pyproject_path.write_text(pyproject_text, encoding="utf-8", newline="\n")
+        # -------------------------------------------------------
+
         rc, out, err = run_cmd(
             [
                 build_python,
@@ -239,6 +438,7 @@ def reproduce_build(
             cwd=str(src_dir),
             env=build_os_env,
         )
+
         if rc != 0:
             raise RuntimeError(f"Build failed with exit code {rc}:\n{err}\n{out}")
 
