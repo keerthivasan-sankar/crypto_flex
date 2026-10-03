@@ -386,7 +386,7 @@ try:
     import tarfile
     _orig_init_write_gz = tarfile._Stream._init_write_gz
 
-    def _patched_init_write_gz(self):
+    def _patched_init_write_gz(self, compresslevel=9, *, mtime=None, filename=None):
         _orig_write = getattr(self, "_Stream__write")
         def _write_wrapper(b):
             if b.startswith(bytes([31, 139, 8, 8])) and len(b) >= 10 and b[9:10] == bytes([255]):
@@ -394,7 +394,15 @@ try:
             return _orig_write(b)
         setattr(self, "_Stream__write", _write_wrapper)
         try:
-            _orig_init_write_gz(self)
+            if sys.version_info >= (3, 12):
+                _orig_init_write_gz(
+                    self,
+                    compresslevel,
+                    mtime=mtime,
+                    filename=filename,
+                )
+            else:
+                _orig_init_write_gz(self)
         finally:
             setattr(self, "_Stream__write", _orig_write)
 
