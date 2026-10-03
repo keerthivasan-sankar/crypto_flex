@@ -12,7 +12,9 @@ A local-first crypto-agility policy engine for Python.
 
 `cryptoflex` sits between your application and its cryptographic primitives. It selects the strongest combination of classical (X25519) and post-quantum (ML-KEM via [liboqs](https://github.com/open-quantum-safe/liboqs)) algorithms that the current machine can support, then hands you a single root key — without ever making a network call.
 
-> **Status:** an unaudited research prototype / security-hardened research prototype prepared for independent security review. Note that [`TECHNICAL_REVIEW_1.md`](TECHNICAL_REVIEW_1.md) is a historical v0.1.0 AI-assisted self-review, not the current security scorecard. Current security posture, format specification, and threat model are documented in [`SECURITY_HARDENING.md`](SECURITY_HARDENING.md), [`docs/FORMAT_SPECIFICATION.md`](docs/FORMAT_SPECIFICATION.md), and [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).
+> **Status:** security-hardened research prototype. CryptoFlex v0.5.4 has undergone an extensive maintainer-led security hardening and technical review covering its cryptographic API boundaries, hybrid key-combination design, header authentication, downgrade protection, streaming integrity, keystore protection, memory-handling practices, adversarial testing, and reproducibility controls. This review is not an independent third-party security audit or formal cryptographic proof. The project remains prepared for further independent security review.
+>
+> The historical [`TECHNICAL_REVIEW_1.md`](TECHNICAL_REVIEW_1.md) is a v0.1.0 AI-assisted self-review and should not be treated as the security assessment of v0.5.4. Current security posture, format specification, and threat model are documented in [`SECURITY_HARDENING.md`](SECURITY_HARDENING.md), [`docs/FORMAT_SPECIFICATION.md`](docs/FORMAT_SPECIFICATION.md), and [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).
 
 ---
 
@@ -227,10 +229,25 @@ The repository provides a documented procedure for independent multi-machine rep
 
 ## Academic Reference
 
-The original architecture and threat model of the policy engine are described in the following paper:
-- [cryptoflex: A Local-First Crypto-Agility Policy Engine for Hybrid](https://figshare.com/articles/journal_contribution/cryptoflex_A_Local-First_Crypto-Agility_Policy_Engine_for_Hybrid/33297369)
+### v0.5.4 Publication
 
-> **Note:** This paper reflects an early architecture of the project. The codebase has since evolved significantly (including authenticated headers, Argon2id KDF, memory zeroization, streaming AEAD, and ephemeral messaging), which are not covered in the original manuscript.
+The security-hardened v0.5.4 release is described in the following paper:
+
+- **cryptoflex v0.5.4: A Security-Hardened Local-First Crypto-Agility Policy Engine for Hybrid Classical and Post-Quantum Key Exchange**
+  Keerthivasan Sankar. Figshare, 2026.
+  [https://figshare.com/articles/conference_contribution/_b_cryptoflex_v0_5_4_A_Security-Hardened_Local-First_Crypto-Agility_Policy_Engine_for_Hybrid_Classical_and_Post-Quantum_Key_Exchange_b_/34046034](https://figshare.com/articles/conference_contribution/_b_cryptoflex_v0_5_4_A_Security-Hardened_Local-First_Crypto-Agility_Policy_Engine_for_Hybrid_Classical_and_Post-Quantum_Key_Exchange_b_/34046034)
+
+This paper covers the v0.5.4 security hardening, authenticated header format v2, streaming AEAD integrity, Argon2id keystore protection, hybrid combiner design, adversarial testing, and reproducible build verification.
+
+### Earlier Architecture Paper (Historical Reference)
+
+The original v0.1.0-era architecture and policy engine design are described in:
+
+- **cryptoflex: A Local-First Crypto-Agility Policy Engine for Hybrid Classical and Post-Quantum Key Exchange**
+  Keerthivasan Sankar. Figshare, 2026.
+  [https://figshare.com/articles/journal_contribution/cryptoflex_A_Local-First_Crypto-Agility_Policy_Engine_for_Hybrid/33297369](https://figshare.com/articles/journal_contribution/cryptoflex_A_Local-First_Crypto-Agility_Policy_Engine_for_Hybrid/33297369)
+
+> **Note:** This earlier paper reflects an early architecture of the project. The codebase has since evolved significantly — including authenticated headers, Argon2id KDF, memory zeroization, streaming AEAD, and ephemeral messaging — which are not covered in the original manuscript. It should not be treated as the security or design assessment for v0.5.4.
 
 ---
 

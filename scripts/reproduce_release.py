@@ -166,7 +166,20 @@ def ensure_windows_system_ca_bundle(ca_dir: Path | None = None) -> Path | None:
             return None
 
         pems = []
-        for der, _type, _trust in all_certs:
+        for der, _type, trust in all_certs:
+            # `trust` is either True (trusted for all purposes) or an iterable of OIDs.
+            # Server authentication OID (id-kp-serverAuth) is "1.3.6.1.5.5.7.3.1".
+            include_cert = False
+            if trust is True:
+                include_cert = True
+            else:
+                try:
+                    if any(str(oid) == "1.3.6.1.5.5.7.3.1" for oid in trust):
+                        include_cert = True
+                except (TypeError, UnicodeDecodeError):
+                    include_cert = False
+            if not include_cert:
+                continue
             if isinstance(der, bytes):
                 b64 = base64.b64encode(der).decode("ascii")
                 wrapped = "\n".join(textwrap.wrap(b64, 64))
@@ -483,6 +496,12 @@ get_requires_for_build_wheel = setuptools.build_meta.get_requires_for_build_whee
                 "all_match": matches,
             }
 
+        # Determine status based on whether a reference comparison was performed
+        if reference is None:
+            # No reference artifacts supplied – build succeeded but no verification performed
+            status = "BUILD_ONLY"
+        else:
+            status = "SUCCESS" if matches else "MISMATCH"
         return {
             "target": target_ref,
             "resolved_commit_sha": commit_sha,
@@ -491,7 +510,7 @@ get_requires_for_build_wheel = setuptools.build_meta.get_requires_for_build_whee
             "pinned_toolchain": PINNED_TOOLS,
             "built_artifacts": built_artifacts,
             "comparison": comparison,
-            "status": "SUCCESS" if (matches is None or matches) else "MISMATCH",
+            "status": status,
         }
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
