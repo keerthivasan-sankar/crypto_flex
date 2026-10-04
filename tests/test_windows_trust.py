@@ -2,10 +2,12 @@ import base64
 import pytest
 from scripts import reproduce_release
 import ssl
-if not hasattr(ssl, "enum_certificates"):
-    def _dummy_enum_certificates(store):
-        raise NotImplementedError("enum_certificates not available on this platform")
-    ssl.enum_certificates = _dummy_enum_certificates  # type: ignore[attr-defined]
+
+@pytest.fixture(autouse=True)
+def mock_windows_platform(monkeypatch):
+    """Force reproduce_release to think it's running on Windows."""
+    monkeypatch.setattr(reproduce_release.platform, "system", lambda: "Windows")
+
 
 FAKE_DER = b"fake-der-bytes"
 

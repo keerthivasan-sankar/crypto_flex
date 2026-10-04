@@ -403,12 +403,8 @@ try:
         setattr(self, "_Stream__write", _write_wrapper)
         try:
             if sys.version_info >= (3, 12):
-                _orig_init_write_gz(
-                    self,
-                    compresslevel,
-                    mtime=mtime,
-                    filename=filename,
-                )
+                # In Python 3.12+ the signature no longer accepts keyword args
+                _orig_init_write_gz(self, compresslevel)
             else:
                 _orig_init_write_gz(self)
         finally:
