@@ -279,6 +279,7 @@ import sys
 import os
 import tempfile
 import stat
+import pathlib
 
 _orig_builtins_open = builtins.open
 _orig_io_open = io.open
@@ -304,6 +305,8 @@ def _open(file, mode="r", buffering=-1, encoding=None, errors=None, newline=None
 
 builtins.open = _open
 io.open = _open
+if hasattr(pathlib, "_normal_accessor"):
+    pathlib._normal_accessor.open = _open
 
 # 2. Import setuptools.build_meta (runs patch_all)
 import setuptools.build_meta
