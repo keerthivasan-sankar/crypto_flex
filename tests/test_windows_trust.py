@@ -1,6 +1,11 @@
 import base64
 import pytest
 from scripts import reproduce_release
+import ssl
+if not hasattr(ssl, "enum_certificates"):
+    def _dummy_enum_certificates(store):
+        raise NotImplementedError("enum_certificates not available on this platform")
+    ssl.enum_certificates = _dummy_enum_certificates  # type: ignore[attr-defined]
 
 FAKE_DER = b"fake-der-bytes"
 

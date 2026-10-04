@@ -285,6 +285,12 @@ _orig_io_open = io.open
 
 # 1. Intercept text-mode writes to enforce LF on config and text files
 def _open(file, mode="r", buffering=-1, encoding=None, errors=None, newline=None, closefd=True, opener=None):
+    # Guard against non‑string mode (e.g. pathlib.Path passed via io.open)
+    if not isinstance(mode, str):
+        return _orig_builtins_open(
+            file, mode, buffering, encoding, errors,
+            newline, closefd, opener,
+        )
     filename = str(file)
     is_write = ("w" in mode or "a" in mode or "x" in mode)
     is_text = "b" not in mode
@@ -292,7 +298,9 @@ def _open(file, mode="r", buffering=-1, encoding=None, errors=None, newline=None
         basename = os.path.basename(filename)
         if basename in ("PKG-INFO", "setup.cfg") or basename.endswith(".txt"):
             newline = "\\n"
-    return _orig_builtins_open(file, mode, buffering, encoding, errors, newline, closefd, opener)
+    return _orig_builtins_open(
+        file, mode, buffering, encoding, errors, newline, closefd, opener,
+    )
 
 builtins.open = _open
 io.open = _open
