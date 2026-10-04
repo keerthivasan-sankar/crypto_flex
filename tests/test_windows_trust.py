@@ -9,6 +9,14 @@ def mock_windows_platform(monkeypatch):
     monkeypatch.setattr(reproduce_release.platform, "system", lambda: "Windows")
 
 
+@pytest.fixture(autouse=True)
+def ensure_enum_certificates(monkeypatch):
+    """Provide a no‑op ssl.enum_certificates on platforms where it is missing."""
+    if not hasattr(reproduce_release.ssl, "enum_certificates"):
+        monkeypatch.setattr(reproduce_release.ssl, "enum_certificates", lambda store: [], raising=False)
+
+
+
 FAKE_DER = b"fake-der-bytes"
 
 def _mk_cert(trust):
