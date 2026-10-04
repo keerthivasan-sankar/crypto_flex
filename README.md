@@ -182,7 +182,7 @@ For complete technical details, see:
 
 ## Testing
 
-194 automated tests covering unit, integration, adversarial, property-based (Hypothesis), reproducibility, and migration cases (194 passed, 0 failed as of v0.5.4).
+198 automated tests covering unit, integration, adversarial, property-based (Hypothesis), reproducibility, and migration cases (198 passed, 0 failed as of v0.5.4).
 
 
 ```bash
