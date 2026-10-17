@@ -1,0 +1,440 @@
+# .github/workflows/verify-reproducibility.yml
+# Verify that a CryptoFlex release artefacts are reproducible.
+# - Manual dispatch only; validates tag format ^v[0-9]+\.[0-9]+\.[0-9]+$.
+# - Checks out the exact tag, resolves peeled commit SHA.
+# - Queries the GitHub Releases API for the tag, validates JSON schema, ensures exactly one wheel, one .tar.gz sdist, and one metadata.json.
+# - Uses a proper URL parser (Python urllib) to enforce HTTPS, no user‑info, no unexpected ports, and follows only allowed hosts.
+# - Downloads assets with curl restricted to HTTPS redirects.
+# - Preserves original filenames safely (uses basename after validation).
+# - Validates metadata schema: 40‑char hex commit SHA, non‑negative integer timestamp, tool versions, 64‑char lowercase hex hashes.
+# - Compares metadata commit SHA and timestamp against the resolved tag commit.
+# - Runs scripts/verify_reproducibility.py with the downloaded artefacts as reference directory.
+# - Permissions are least‑privilege (contents: read, id-token: read).
+
+name: Verify Reproducibility
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to verify (e.g. v1.2.3)"
+        required: true
+        type: string
+
+permissions:
+  contents: read   # checkout + GitHub API access
+  id-token: read   # for authenticated API requests
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    env:
+      TAG: ''
+      COMMIT_SHA: ''
+    steps:
+      # ---------------------------------------------------------------
+      # 1️⃣ Validate tag input format
+      # ---------------------------------------------------------------
+      - name: Validate tag input
+        id: tag_validate
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${INPUT_TAG}" ]]; then
+            echo "❌ Input tag is required"
+            exit 1
+          fi
+          if ! [[ "${INPUT_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "❌ Invalid tag format: ${INPUT_TAG}"
+            exit 1
+          fi
+          echo "tag=${INPUT_TAG}" >> "$GITHUB_OUTPUT"
+
+      # ---------------------------------------------------------------
+      # 2️⃣ Checkout the exact tag
+      # ---------------------------------------------------------------
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          ref: "refs/tags/${{ steps.tag_validate.outputs.tag }}"
+          fetch-depth: 0
+
+      # ---------------------------------------------------------------
+      # 3️⃣ Resolve peeled commit SHA after checkout
+      # ---------------------------------------------------------------
+      - name: Resolve peeled commit SHA
+        id: resolve_sha
+        run: |
+          set -euo pipefail
+          COMMIT_SHA=$(git rev-parse "refs/tags/${{ steps.tag_validate.outputs.tag }}^{commit}")
+          echo "commit_sha=${COMMIT_SHA}" >> "$GITHUB_OUTPUT"
+
+      # ---------------------------------------------------------------
+      # 4️⃣ Fetch release information via GitHub API
+      # ---------------------------------------------------------------
+      - name: Fetch release information
+        id: get_release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          RELEASE_JSON=$(curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ steps.tag_validate.outputs.tag }}")
+
+          # Validate that the response is a JSON object with required fields.
+          if ! echo "$RELEASE_JSON" | jq -e 'has("id") and has("assets") and (.assets | type == "array")' >/dev/null; then
+            echo "❌ Release JSON missing required fields or not an object"
+            exit 1
+          fi
+
+          # Verify tag_name matches the requested tag.
+          API_TAG=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
+          if [[ "$API_TAG" != "${{ steps.tag_validate.outputs.tag }}" ]]; then
+            echo "❌ Release tag_name ($API_TAG) does not match requested tag (${ { steps.tag_validate.outputs.tag }})"
+            exit 1
+          fi
+
+          # Count matching assets to enforce exactly one of each.
+          WHEEL_COUNT=$(echo "$RELEASE_JSON" | jq '[.assets[] | select(.name | endswith(".whl"))] | length')
+          SDIST_COUNT=$(echo "$RELEASE_JSON" | jq '[.assets[] | select(.name | endswith(".tar.gz"))] | length')
+          META_COUNT=$(echo "$RELEASE_JSON" | jq '[.assets[] | select(.name == "metadata.json")] | length')
+          if [[ $WHEEL_COUNT -ne 1 ]]; then
+            echo "❌ Expected exactly one wheel asset, found $WHEEL_COUNT"
+            exit 1
+          fi
+          if [[ $SDIST_COUNT -ne 1 ]]; then
+            echo "❌ Expected exactly one sdist asset, found $SDIST_COUNT"
+            exit 1
+          fi
+          if [[ $META_COUNT -ne 1 ]]; then
+            echo "❌ Expected exactly one metadata.json asset, found $META_COUNT"
+            exit 1
+          fi
+
+          # Extract asset URLs and names.
+          WHEEL_NAME=$(echo "$RELEASE_JSON" | jq -r '[.assets[] | select(.name | endswith(".whl"))][0].name')
+          SDIST_NAME=$(echo "$RELEASE_JSON" | jq -r '[.assets[] | select(.name | endswith(".tar.gz"))][0].name')
+          WHEEL_URL=$(echo "$RELEASE_JSON" | jq -r '[.assets[] | select(.name | endswith(".whl"))][0].browser_download_url')
+          SDIST_URL=$(echo "$RELEASE_JSON" | jq -r '[.assets[] | select(.name | endswith(".tar.gz"))][0].browser_download_url')
+          META_URL=$(echo "$RELEASE_JSON" | jq -r '[.assets[] | select(.name == "metadata.json")][0].browser_download_url')
+
+          # Ensure each URL and name is non‑empty.
+          if [[ -z "$WHEEL_URL" || -z "$SDIST_URL" || -z "$META_URL" || -z "$WHEEL_NAME" || -z "$SDIST_NAME" ]]; then
+            echo "❌ One or more required assets or names missing (wheel/sdist/metadata.json)"
+            exit 1
+          fi
+
+          # Export for later steps.
+          echo "wheel_name=${WHEEL_NAME}" >> "$GITHUB_OUTPUT"
+          echo "sdist_name=${SDIST_NAME}" >> "$GITHUB_OUTPUT"
+          echo "wheel_url=${WHEEL_URL}" >> "$GITHUB_OUTPUT"
+          echo "sdist_url=${SDIST_URL}" >> "$GITHUB_OUTPUT"
+          echo "metadata_url=${META_URL}" >> "$GITHUB_OUTPUT"
+
+      # ---------------------------------------------------------------
+      # 5️⃣ Validate URLs (HTTPS, no user‑info, allowed hosts only)
+      # ---------------------------------------------------------------
+      - name: Validate asset URLs
+        id: url_check
+        env:
+          WHEEL_URL: ${{ steps.get_release.outputs.wheel_url }}
+          SDIST_URL: ${{ steps.get_release.outputs.sdist_url }}
+          META_URL: ${{ steps.get_release.outputs.metadata_url }}
+          ALLOWED_HOSTS: "github.com objects.githubusercontent.com"
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os, sys, urllib.parse
+
+          def validate(url):
+              p = urllib.parse.urlparse(url)
+              if p.scheme != 'https':
+                  print(f'❌ URL does not use HTTPS: {url}', file=sys.stderr)
+                  sys.exit(1)
+              if p.username or p.password:
+                  print(f'❌ URL must not contain credentials: {url}', file=sys.stderr)
+                  sys.exit(1)
+              if p.port and p.port not in (443, None):
+                  print(f'❌ Unexpected port in URL: {url}', file=sys.stderr)
+                  sys.exit(1)
+              allowed = os.getenv('ALLOWED_HOSTS').split()
+              if p.hostname not in allowed:
+                  print(f'❌ Host not allowed: {p.hostname} (url {url})', file=sys.stderr)
+                  sys.exit(1)
+              # No path‑traversal checks needed for download; we use basename later.
+
+          for name in ('WHEEL_URL', 'SDIST_URL', 'META_URL'):
+              validate(os.getenv(name))
+          PY
+
+      # ---------------------------------------------------------------
+      # 6️⃣ Download assets (preserve validated filenames)
+      # ---------------------------------------------------------------
+      - name: Download assets
+        id: download
+        env:
+          WHEEL_URL: ${{ steps.get_release.outputs.wheel_url }}
+          SDIST_URL: ${{ steps.get_release.outputs.sdist_url }}
+          META_URL: ${{ steps.get_release.outputs.metadata_url }}
+          WHEEL_NAME: ${{ steps.get_release.outputs.wheel_name }}
+          SDIST_NAME: ${{ steps.get_release.outputs.sdist_name }}
+          ALLOWED_HOSTS: "github.com objects.githubusercontent.com"
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${ALLOWED_HOSTS:-}" ]]; then
+            echo "❌ ALLOWED_HOSTS configuration is missing or empty" >&2
+            exit 1
+          fi
+
+          mkdir -p download
+
+          # Validate trusted filenames from release metadata
+          validate_filename() {
+            local name="$1"
+            local expected_ext="$2"
+            if [[ -z "$name" || "$name" == */* || "$name" == *\\* || "$name" == *".."* || "$name" == "." || "$name" == ".." ]]; then
+              echo "❌ Unsafe filename rejected: $name" >&2
+              exit 1
+            fi
+            if [[ "$name" != *"$expected_ext" ]]; then
+              echo "❌ Filename $name does not match expected extension $expected_ext" >&2
+              exit 1
+            fi
+          }
+
+          validate_filename "$WHEEL_NAME" ".whl"
+          validate_filename "$SDIST_NAME" ".tar.gz"
+
+          if [[ "$WHEEL_NAME" == "$SDIST_NAME" || "$WHEEL_NAME" == "metadata.json" || "$SDIST_NAME" == "metadata.json" ]]; then
+            echo "❌ Colliding asset filenames detected" >&2
+            exit 1
+          fi
+
+          # Download asset following redirects hop-by-hop, validating each hop.
+          # Uses temporary file and atomic rename; cleans up on failure.
+          download_asset() {
+            local start_url="$1"
+            local target_path="$2"
+            local max_hops=5
+            local hop=0
+            local current_url="$start_url"
+            local seen_urls=()
+            local tmp_out
+            tmp_out=$(mktemp "download/tmp_asset.XXXXXX")
+
+            # Trap to ensure temporary file cleanup on error
+            cleanup_tmp() {
+              rm -f "$tmp_out"
+            }
+            trap cleanup_tmp ERR
+
+            while :; do
+              ((hop += 1))
+              if (( hop > max_hops )); then
+                echo "❌ Too many redirects (>$max_hops) for $start_url" >&2
+                rm -f "$tmp_out"
+                exit 1
+              fi
+
+              # Check redirect loop
+              for seen in "${seen_urls[@]:-}"; do
+                if [[ "$seen" == "$current_url" ]]; then
+                  echo "❌ Redirect loop detected at $current_url" >&2
+                  rm -f "$tmp_out"
+                  exit 1
+                fi
+              done
+              seen_urls+=("$current_url")
+
+              # Validate current URL before issuing request
+              local py_rc=0
+              python - "$current_url" <<'PY' || py_rc=$?
+              import os, sys, urllib.parse
+              url = sys.argv[1]
+              allowed_str = os.getenv('ALLOWED_HOSTS', '').strip()
+              if not allowed_str:
+                  sys.exit(6)
+              allowed = allowed_str.split()
+              p = urllib.parse.urlparse(url)
+              if p.scheme != 'https':
+                  sys.exit(2)
+              if p.username or p.password:
+                  sys.exit(3)
+              if p.port and p.port not in (443, None):
+                  sys.exit(4)
+              if p.hostname not in allowed:
+                  sys.exit(5)
+              sys.exit(0)
+              PY
+              case "$py_rc" in
+                0) ;;
+                2) echo "❌ URL does not use HTTPS: $current_url" >&2; rm -f "$tmp_out"; exit 1;;
+                3) echo "❌ URL contains credentials: $current_url" >&2; rm -f "$tmp_out"; exit 1;;
+                4) echo "❌ URL uses unexpected port: $current_url" >&2; rm -f "$tmp_out"; exit 1;;
+                5) echo "❌ Host not allowed: $(python -c "import urllib.parse,sys;print(urllib.parse.urlparse(sys.argv[1]).hostname)" "$current_url")" >&2; rm -f "$tmp_out"; exit 1;;
+                6) echo "❌ ALLOWED_HOSTS configuration is missing or empty" >&2; rm -f "$tmp_out"; exit 1;;
+                *) echo "❌ URL validation failed for $current_url" >&2; rm -f "$tmp_out"; exit 1;;
+              esac
+
+              # Fetch headers and body for one hop without automatic redirect following.
+              # Notice: do not use -f here, so 3xx and 4xx still produce header dumps.
+              local header_file
+              header_file=$(mktemp)
+              if ! curl -sS -D "$header_file" --proto =https -o "$tmp_out" "$current_url"; then
+                rm -f "$header_file" "$tmp_out"
+                echo "❌ curl network/TLS error for $current_url" >&2
+                exit 1
+              fi
+
+              local status
+              status=$(head -n1 "$header_file" | awk '{print $2}')
+              local location
+              location=$( (grep -i '^Location:' "$header_file" || true) | cut -d' ' -f2- | tr -d '\r' | tail -n1)
+              rm -f "$header_file"
+
+              if [[ "$status" =~ ^3[0-9][0-9]$ ]]; then
+                if [[ -z "$location" ]]; then
+                  echo "❌ Redirect status $status without Location header for $current_url" >&2
+                  rm -f "$tmp_out"
+                  exit 1
+                fi
+
+                # Resolve relative Location using urllib.parse.urljoin
+                location=$(python -c "import sys, urllib.parse; print(urllib.parse.urljoin(sys.argv[1], sys.argv[2]))" "$current_url" "$location")
+                current_url="$location"
+                continue
+              elif [[ "$status" =~ ^2[0-9][0-9]$ ]]; then
+                # Successfully downloaded asset: atomically move to final path
+                mv "$tmp_out" "$target_path"
+                trap - ERR
+                break
+              else
+                echo "❌ HTTP request failed with status $status for $current_url" >&2
+                rm -f "$tmp_out"
+                exit 1
+              fi
+            done
+          }
+
+          download_asset "$WHEEL_URL" "download/$WHEEL_NAME"
+          download_asset "$SDIST_URL" "download/$SDIST_NAME"
+          download_asset "$META_URL" "download/metadata.json"
+
+          # Verify that all 3 files exist before emitting GITHUB_OUTPUT
+          for f in "download/$WHEEL_NAME" "download/$SDIST_NAME" "download/metadata.json"; do
+            if [[ ! -f "$f" ]]; then
+              echo "❌ Expected asset $f is missing" >&2
+              exit 1
+            fi
+          done
+
+          # Emit GITHUB_OUTPUT exactly once
+          echo "wheel_path=$(realpath download/$WHEEL_NAME)" >> "$GITHUB_OUTPUT"
+          echo "sdist_path=$(realpath download/$SDIST_NAME)" >> "$GITHUB_OUTPUT"
+          echo "metadata_path=$(realpath download/metadata.json)" >> "$GITHUB_OUTPUT"
+
+      # ---------------------------------------------------------------
+      # 7️⃣ Validate metadata schema and compare hashes
+      # ---------------------------------------------------------------
+      - name: Validate metadata and checksums
+        env:
+          METADATA: ${{ steps.download.outputs.metadata_path }}
+          WHEEL_PATH: ${{ steps.download.outputs.wheel_path }}
+          SDIST_PATH: ${{ steps.download.outputs.sdist_path }}
+          RESOLVED_SHA: ${{ steps.resolve_sha.outputs.commit_sha }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, sys, re, hashlib
+
+          META_PATH = os.getenv('METADATA')
+          WHEEL_PATH = os.getenv('WHEEL_PATH')
+          SDIST_PATH = os.getenv('SDIST_PATH')
+          RESOLVED_SHA = os.getenv('RESOLVED_SHA')
+
+          with open(META_PATH) as f:
+              meta = json.load(f)
+
+          # ---- schema checks ----
+          required_fields = [
+              'commit_sha', 'source_date_epoch', 'python_version',
+              'pinned_tools', 'wheel_sha256', 'sdist_sha256'
+          ]
+          for f in required_fields:
+              if f not in meta:
+                  print(f'❌ metadata missing required field: {f}', file=sys.stderr)
+                  sys.exit(1)
+
+          # commit_sha: 40‑char hex
+          if not re.fullmatch(r'[0-9a-f]{40}', meta['commit_sha']):
+              print('❌ commit_sha not a 40‑char hex string', file=sys.stderr)
+              sys.exit(1)
+
+          # source_date_epoch: non‑negative integer
+          if not isinstance(meta['source_date_epoch'], int) or meta['source_date_epoch'] < 0:
+              print('❌ source_date_epoch must be a non‑negative integer', file=sys.stderr)
+              sys.exit(1)
+
+          # tool versions must be strings matching the pinned versions
+          pinned = {
+              'pip': '26.2.1',
+              'build': '1.6.0',
+              'setuptools': '84.0.0',
+              'wheel': '0.48.0'
+          }
+          for tool, version in pinned.items():
+              if meta['pinned_tools'].get(tool) != version:
+                  print(f'❌ pinned tool version mismatch for {tool}: expected {version}, got {meta["pinned_tools"].get(tool)}', file=sys.stderr)
+                  sys.exit(1)
+
+          # hashes: 64‑char lowercase hex
+          hash_fields = ['wheel_sha256', 'sdist_sha256']
+          for hf in hash_fields:
+              if not re.fullmatch(r'[0-9a-f]{64}', meta[hf]):
+                  print(f'❌ {hf} is not a 64‑char lowercase hex hash', file=sys.stderr)
+                  sys.exit(1)
+
+          # compare commit SHA and epoch against resolved tag commit
+          if meta['commit_sha'] != RESOLVED_SHA:
+              print('❌ metadata commit_sha does not match resolved tag commit', file=sys.stderr)
+              sys.exit(1)
+
+          # Compute actual file hashes and compare
+
+          def sha256_file(path):
+              h = hashlib.sha256()
+              with open(path, 'rb') as f:
+                  for blk in iter(lambda: f.read(65536), b''):
+                      h.update(blk)
+              return h.hexdigest()
+
+          if sha256_file(WHEEL_PATH) != meta['wheel_sha256']:
+              print('❌ wheel SHA‑256 mismatch', file=sys.stderr)
+              sys.exit(1)
+          if sha256_file(SDIST_PATH) != meta['sdist_sha256']:
+              print('❌ sdist SHA‑256 mismatch', file=sys.stderr)
+              sys.exit(1)
+
+          print('✅ metadata validation passed')
+          PY
+
+      # ---------------------------------------------------------------
+      # 8️⃣ Run reproducibility verifier with reference artefacts
+      # ---------------------------------------------------------------
+      - name: Run reproducibility verifier
+        env:
+          REFERENCE_DIR: ${{ runner.temp }}/reference
+          WHEEL_PATH: ${{ steps.download.outputs.wheel_path }}
+          SDIST_PATH: ${{ steps.download.outputs.sdist_path }}
+          SOURCE_REF: ${{ steps.resolve_sha.outputs.commit_sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$REFERENCE_DIR"
+          cp "$WHEEL_PATH" "$REFERENCE_DIR/"
+          cp "$SDIST_PATH" "$REFERENCE_DIR/"
+
+          python scripts/verify_reproducibility.py \
+            --source-ref "$SOURCE_REF" \
+            --reference-dir "$REFERENCE_DIR"
