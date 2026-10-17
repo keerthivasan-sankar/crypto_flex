@@ -9,7 +9,7 @@
 # - Validates metadata schema: 40‑char hex commit SHA, non‑negative integer timestamp, tool versions, 64‑char lowercase hex hashes.
 # - Compares metadata commit SHA and timestamp against the resolved tag commit.
 # - Runs scripts/verify_reproducibility.py with the downloaded artefacts as reference directory.
-# - Permissions are least‑privilege (contents: read, id-token: read).
+# - Permissions are least‑privilege (contents: read).
 
 name: Verify Reproducibility
 
