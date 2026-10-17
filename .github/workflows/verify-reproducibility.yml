@@ -23,7 +23,7 @@ on:
 
 permissions:
   contents: read   # checkout + GitHub API access
-  id-token: read   # for authenticated API requests
+
 
 jobs:
   verify:
@@ -77,10 +77,12 @@ jobs:
         id: get_release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EXPECTED_TAG: ${{ steps.tag_validate.outputs.tag }}
+          REPO_NAME: ${{ github.repository }}
         run: |
           set -euo pipefail
           RELEASE_JSON=$(curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" \
-            "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ steps.tag_validate.outputs.tag }}")
+            "https://api.github.com/repos/$REPO_NAME/releases/tags/$EXPECTED_TAG")
 
           # Validate that the response is a JSON object with required fields.
           if ! echo "$RELEASE_JSON" | jq -e 'has("id") and has("assets") and (.assets | type == "array")' >/dev/null; then
@@ -90,8 +92,8 @@ jobs:
 
           # Verify tag_name matches the requested tag.
           API_TAG=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
-          if [[ "$API_TAG" != "${{ steps.tag_validate.outputs.tag }}" ]]; then
-            echo "❌ Release tag_name ($API_TAG) does not match requested tag (${ { steps.tag_validate.outputs.tag }})"
+          if [[ "$API_TAG" != "$EXPECTED_TAG" ]]; then
+            echo "❌ Release tag_name ($API_TAG) does not match expected tag $EXPECTED_TAG"
             exit 1
           fi
 
