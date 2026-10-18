@@ -96,28 +96,31 @@ def test_https_request_success(monkeypatch):
 
     # ----- Validate bundle PEM content and X.509 parsing -----
     pem_data = bundle_path.read_text(encoding="utf-8")
-    blocks = [blk for blk in pem_data.split("-----END CERTIFICATE-----") if "-----BEGIN CERTIFICATE-----" in blk]
-    assert blocks, "No PEM certificate blocks found in the bundle"
     import base64, re
-    # Optional: use cryptography to parse each certificate.
-    try:
-        from cryptography import x509
-        from cryptography.hazmat.backends import default_backend
-    except Exception as e:
-        pytest.fail(f"cryptography library unavailable: {e}")
-    for blk in blocks:
-        m = re.search(r"-----BEGIN CERTIFICATE-----\s*(.+?)\s*-----END CERTIFICATE-----", blk, re.DOTALL)
-        if m:
-            clean = "".join(m.group(1).split())
-            try:
-                der_bytes = base64.b64decode(clean, validate=True)
-            except Exception as e:
-                pytest.fail(f"Invalid base64 in PEM block: {e}")
-            # Parse X.509 certificate; will raise if malformed.
-            try:
-                x509.load_der_x509_certificate(der_bytes, backend=default_backend())
-            except Exception as e:
-                pytest.fail(f"Malformed X.509 certificate: {e}")
+    from cryptography import x509
+    from cryptography.hazmat.backends import default_backend
+
+    pattern = re.compile(r"-----BEGIN CERTIFICATE-----\r?\n(.+?)\r?\n-----END CERTIFICATE-----", re.DOTALL)
+    matches = pattern.findall(pem_data)
+    assert matches, "No PEM certificate blocks found in the bundle"
+
+    # Ensure no malformed or orphaned markers exist in the bundle
+    begin_count = pem_data.count("-----BEGIN CERTIFICATE-----")
+    end_count = pem_data.count("-----END CERTIFICATE-----")
+    assert begin_count == end_count == len(matches), (
+        f"Mismatched certificate markers: {begin_count} begins, {end_count} ends, {len(matches)} valid blocks"
+    )
+
+    for idx, b64_body in enumerate(matches):
+        clean = "".join(b64_body.split())
+        try:
+            der_bytes = base64.b64decode(clean, validate=True)
+        except Exception as e:
+            pytest.fail(f"Invalid base64 in certificate block #{idx + 1}: {e}")
+        try:
+            x509.load_der_x509_certificate(der_bytes, backend=default_backend())
+        except Exception as e:
+            pytest.fail(f"Malformed X.509 certificate in block #{idx + 1}: {e}")
 
     # ----- Capture SSLContext usage -----
     loaded_path = {}
