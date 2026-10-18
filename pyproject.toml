@@ -19,6 +19,7 @@ pqc = ["liboqs-python>=0.16.0,<0.17.0"]
 dev = [
     "pytest>=7.0.0",
     "hypothesis>=6.0.0",
+    "requests>=2.28.0",
 ]
 
 [project.scripts]
