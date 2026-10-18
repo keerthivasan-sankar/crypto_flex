@@ -188,8 +188,13 @@ def ensure_windows_system_ca_bundle(ca_dir: Path | None = None) -> Path | None:
         if not pems:
             return None
 
-        target_dir = ca_dir or (Path(tempfile.gettempdir()) / "cryptoflex_ca_bundle")
+        # Use a unique temporary directory unless a specific path is provided.
+        target_dir = ca_dir or Path(tempfile.mkdtemp(prefix="cryptoflex_ca_bundle_"))
         target_dir.mkdir(parents=True, exist_ok=True)
+        # Register cleanup for the temporary directory if we created it
+        if ca_dir is None:
+            import atexit, shutil
+            atexit.register(lambda: shutil.rmtree(target_dir, ignore_errors=True))
         bundle_path = target_dir / "win_sys_ca_bundle.pem"
         bundle_path.write_text("\n".join(pems), encoding="utf-8")
 
