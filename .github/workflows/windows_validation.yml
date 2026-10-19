@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - windows-ca-bundle-validation
+      - main
+  pull_request:
+    branches:
+      - main
+
 
 jobs:
   validate-windows:
