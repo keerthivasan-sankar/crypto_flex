@@ -55,7 +55,7 @@ jobs:
       # 2️⃣ Checkout the exact tag
       # ---------------------------------------------------------------
       - name: Checkout tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: "refs/tags/${{ steps.tag_validate.outputs.tag }}"
           fetch-depth: 0
