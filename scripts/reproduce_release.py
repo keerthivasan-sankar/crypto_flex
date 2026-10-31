@@ -43,6 +43,38 @@ from scripts.verify_reproducibility import (
     run_cmd,
     sha256_file,
 )
+def _normalize_tree_timestamps(root: Path, epoch: int) -> None:
+    """Recursively set atime and mtime of all files and directories under *root*
+    to the deterministic *epoch* value.
+
+    The function walks the directory tree, normalising timestamps for every
+    directory (including *root*) and every file. Any failure to set a timestamp
+    is collected and raised as a single ``RuntimeError`` so the caller knows the
+    operation was not completely successful.
+    """
+    failures: list[str] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        # Normalise the directory itself first
+        try:
+            os.utime(dirpath, (epoch, epoch))
+        except Exception as e:
+            failures.append(f"Directory {dirpath}: {e}")
+        # Normalise sub‑directories discovered by os.walk
+        for d in dirnames:
+            subdir = os.path.join(dirpath, d)
+            try:
+                os.utime(subdir, (epoch, epoch))
+            except Exception as e:
+                failures.append(f"Directory {subdir}: {e}")
+        # Normalise files
+        for f in filenames:
+            file_path = os.path.join(dirpath, f)
+            try:
+                os.utime(file_path, (epoch, epoch))
+            except Exception as e:
+                failures.append(f"File {file_path}: {e}")
+    if failures:
+        raise RuntimeError("Failed to normalise timestamps:\n" + "\n".join(failures))
 
 # Official published reference artifact metadata for known releases
 OFFICIAL_RELEASE_REFERENCES: dict[str, dict] = {
@@ -265,6 +297,7 @@ def reproduce_build(
         src_dir = tmp_dir / "crypto_flex"
         extract_reproducible_source(repo_root, commit_sha, src_dir)
 
+        _normalize_tree_timestamps(src_dir, commit_ts)
         # Configure host Windows System CA certificates if applicable
         ensure_windows_system_ca_bundle()
 

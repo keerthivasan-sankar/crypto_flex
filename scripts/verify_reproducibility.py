@@ -36,6 +36,7 @@ import sys
 import tarfile
 import tempfile
 from pathlib import Path
+import platform
 
 # Pinned build toolchain specifications
 PINNED_TOOLS = {
@@ -134,7 +135,7 @@ def prepare_fresh_build_environment(tmp_dir: Path, host_python: str) -> dict:
         "--quiet",
     ] + install_reqs
 
-    rc_inst, out_inst, err_inst = _run(cmd_inst)
+    rc_inst, out_inst, err_inst = _run(cmd_inst, env=os.environ.copy())
     if rc_inst != 0:
         raise RuntimeError(
             f"Failed to install pinned build tools into fresh environment {venv_python}: {err_inst}\n{out_inst}"
@@ -261,14 +262,15 @@ def load_reference_artifacts(reference_dir: Path) -> dict:
     Returns a dict with 'wheel' and 'sdist' sub-dicts containing
     filename, hash, and size.
 
-    Raises RuntimeError if expected artifacts are missing.
+    Raises RuntimeError if expected artifacts are missing or if
+    multiple artifacts of a type are found.
     """
     ref_path = Path(reference_dir)
     if not ref_path.is_dir():
         raise RuntimeError(f"--reference-dir '{reference_dir}' is not a directory")
 
-    wheels = list(ref_path.glob("*.whl"))
-    sdists = list(ref_path.glob("*.tar.gz"))
+    wheels = sorted(ref_path.glob("*.whl"))
+    sdists = sorted(ref_path.glob("*.tar.gz"))
 
     if not wheels:
         raise RuntimeError(
@@ -277,6 +279,14 @@ def load_reference_artifacts(reference_dir: Path) -> dict:
     if not sdists:
         raise RuntimeError(
             f"No sdist (.tar.gz) artifact found in --reference-dir '{reference_dir}'"
+        )
+    if len(wheels) != 1:
+        raise RuntimeError(
+            f"Expected exactly one wheel (.whl) artifact in --reference-dir '{reference_dir}', found {len(wheels)}"
+        )
+    if len(sdists) != 1:
+        raise RuntimeError(
+            f"Expected exactly one sdist (.tar.gz) artifact in --reference-dir '{reference_dir}', found {len(sdists)}"
         )
 
     wheel_path = wheels[0]
@@ -412,6 +422,21 @@ def main(argv=None):
         try:
             src_dir = tmp_dir / "crypto_flex"
             extract_source(commit_sha, src_dir, repo_root)
+            # Ensure Windows system CA bundle before creating fresh build venv
+            if platform.system() == "Windows":
+                from scripts.reproduce_release import ensure_windows_system_ca_bundle
+                ca_dir = tmp_dir / "ca_bundle"
+                bundle_path = ensure_windows_system_ca_bundle(ca_dir=ca_dir)
+                if not bundle_path or not Path(bundle_path).is_file():
+                    raise RuntimeError(f"CA bundle generation failed or bundle file missing: {bundle_path}")
+
+            # Normalize file timestamps to SOURCE_DATE_EPOCH for deterministic archives
+            def _norm_mtime(p: Path, ts: int):
+                for root, dirs, files in os.walk(p):
+                    for name in dirs + files:
+                        path = Path(root, name)
+                        os.utime(path, (ts, ts))
+            _norm_mtime(src_dir, commit_ts)
 
             env_info = prepare_fresh_build_environment(tmp_dir, host_python)
             build_python = env_info["python_executable"]
