@@ -12,6 +12,8 @@ def test_build_only_status(tmp_path: Path) -> None:
     reference artifacts are supplied (i.e. ``reference`` remains ``None``).
     """
     repo_root = Path(__file__).parents[1]
+    if not (repo_root / ".git").exists():
+        pytest.skip("requires a git checkout (not available from an sdist)")
     # Resolve the current HEAD commit SHA – this is a valid reference that is
     # not present in ``OFFICIAL_RELEASE_REFERENCES``.
     completed = subprocess.run(
