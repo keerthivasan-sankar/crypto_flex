@@ -31,7 +31,7 @@ Repository = "https://github.com/keerthivasan-sankar/crypto_flex"
 Issues = "https://github.com/keerthivasan-sankar/crypto_flex/issues"
 
 [tool.setuptools.packages.find]
-include = ["cryptoflex*", "scripts*"]
+include = ["cryptoflex*"]
 
 [tool.setuptools.package-data]
 cryptoflex = ["algorithm_status.json"]

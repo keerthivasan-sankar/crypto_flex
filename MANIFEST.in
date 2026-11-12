@@ -1,0 +1,11 @@
+include CHANGELOG.md
+include SECURITY_HARDENING.md
+include security.md
+include TECHNICAL_REVIEW_1.md
+recursive-include docs *.md
+recursive-include docs/results *.svg
+recursive-include scripts *.py
+include tests/conftest.py
+recursive-include tests/vectors *.json
+recursive-include tests/adversarial *.py
+global-exclude __pycache__ *.py[cod]
