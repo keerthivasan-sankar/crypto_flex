@@ -230,7 +230,7 @@ def extract_source_tree(repo_root: Path, commit_sha: str, dest_dir: Path) -> Non
     .git/, untracked files, and any local modifications.
     """
     # Use git archive to produce a tar stream, then extract it
-    archive_cmd = ["git", "archive", "--format=tar", commit_sha]
+    archive_cmd = ["git", "-c", "core.autocrlf=false", "-c", "tar.umask=0022", "archive", "--format=tar", commit_sha]
     archive_proc = subprocess.Popen(
         archive_cmd,
         cwd=str(repo_root),

@@ -241,7 +241,7 @@ def ensure_windows_system_ca_bundle(ca_dir: Path | None = None) -> Path | None:
 
 def extract_reproducible_source(repo_root: Path, commit_sha: str, dest_dir: Path) -> None:
     """Extract source tree using git with core.autocrlf=false to preserve LF line endings."""
-    archive_cmd = ["git", "-c", "core.autocrlf=false", "archive", "--format=tar", commit_sha]
+    archive_cmd = ["git", "-c", "core.autocrlf=false", "-c", "tar.umask=0022", "archive", "--format=tar", commit_sha]
     archive_proc = subprocess.Popen(
         archive_cmd,
         cwd=str(repo_root),
