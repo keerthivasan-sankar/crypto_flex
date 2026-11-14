@@ -51,6 +51,16 @@ jobs:
             --source-ref ${{ steps.get_commit.outputs.sha }} \
             --reference-dir dist/
 
+      - name: Generate release metadata
+        env:
+          COMMIT_SHA: ${{ steps.get_commit.outputs.sha }}
+          SOURCE_DATE_EPOCH: ${{ steps.get_commit.outputs.timestamp }}
+        run: |
+          .build_venv/bin/python scripts/generate_release_metadata.py \
+            --dist-dir dist \
+            --commit-sha "$COMMIT_SHA" \
+            --source-date-epoch "$SOURCE_DATE_EPOCH"
+
       - name: Generate CycloneDX SBOM
         run: |
           pip install cyclonedx-bom==4.1.2
