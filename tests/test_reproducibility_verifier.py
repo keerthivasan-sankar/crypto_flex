@@ -83,7 +83,7 @@ def test_cli_defaults(monkeypatch, capsys):
     assert exit_code == 0
     assert "REPRODUCIBLE" in out
 
-def test_cli_explicit(monkeypatch, capsys):
+def test_cli_explicit(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(verify, "run_cmd", mock_build_command())
     monkeypatch.setattr(verify, "extract_source", lambda *a, **kw: None)
     monkeypatch.setattr(
@@ -103,8 +103,8 @@ def test_cli_explicit(monkeypatch, capsys):
         lambda *a, **kw: ("hashnorm", 123, Path("norm.tar.gz")),
     )
     monkeypatch.setattr(verify, "sha256_file", lambda p: f"hash-{p.name}")
-    ref_dir = Path("refdir")
-    ref_dir.mkdir(exist_ok=True)
+    ref_dir = tmp_path / "refdir"
+    ref_dir.mkdir(parents=True, exist_ok=True)
     (ref_dir / "pkg-0.1.0-py3-none-any.whl").write_text("wheel")
     (ref_dir / "pkg-0.1.0.tar.gz").write_text("sdist")
     argv = ["--source-ref", "v0.1.0", "--reference-dir", str(ref_dir)]
