@@ -14,6 +14,7 @@ class TestWindowsCAHelper(unittest.TestCase):
         result = ensure_windows_system_ca_bundle()
         self.assertIsNone(result, "Helper should return None on non-Windows platforms")
 
+    @unittest.skipUnless(sys.platform == 'win32', 'requires the Windows certificate store')
     @mock.patch('platform.system')
     def test_helper_creates_bundle_on_windows(self, mock_system):
         mock_system.return_value = "Windows"
