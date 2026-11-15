@@ -12,6 +12,14 @@ numbers** that don't necessarily move together:
   change for anyone with existing encrypted files and will always be
   called out explicitly here.
 
+## [0.5.5] - 2026-10-10
+
+### Release Candidate
+- Reproducibility tooling and artifact hash verification.
+- Windows certificate-bundle handling (see `scripts/reproduce_release.py`).
+- URL and redirect validation in the reproducibility workflow.
+- Packaging includes the `scripts*` package.
+
 ## [0.5.4] - September 2026
 
 ### Security / Build Integrity Fix
