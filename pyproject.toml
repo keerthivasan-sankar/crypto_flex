@@ -35,3 +35,6 @@ include = ["cryptoflex*"]
 
 [tool.setuptools.package-data]
 cryptoflex = ["algorithm_status.json"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
