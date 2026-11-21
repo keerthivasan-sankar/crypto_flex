@@ -61,10 +61,50 @@ jobs:
             --commit-sha "$COMMIT_SHA" \
             --source-date-epoch "$SOURCE_DATE_EPOCH"
 
-      - name: Generate CycloneDX SBOM
+      - name: Set up SBOM tooling
         run: |
-          pip install cyclonedx-bom==4.1.2
-          cyclonedx-py environment --outfile dist/SBOM.json
+          python -m venv .sbom_tools
+          .sbom_tools/bin/pip install --upgrade pip==26.2.1
+          .sbom_tools/bin/pip install cyclonedx-bom==4.1.2 jsonschema==4.23.0
+
+      - name: Generate Base Runtime SBOM
+        run: |
+          python -m venv .sbom_runtime
+          .sbom_runtime/bin/pip install --upgrade pip==26.2.1
+          .sbom_runtime/bin/pip install dist/cryptoflex-0.5.5-py3-none-any.whl
+          .sbom_runtime/bin/python -m pip check
+          .sbom_tools/bin/cyclonedx-py environment .sbom_runtime/bin/python \
+            --pyproject pyproject.toml \
+            --mc-type library \
+            --schema-version 1.5 \
+            --output-reproducible \
+            --outfile dist/SBOM.json
+
+      - name: Generate PQC Runtime SBOM
+        run: |
+          python -m venv .sbom_pqc
+          .sbom_pqc/bin/pip install --upgrade pip==26.2.1
+          .sbom_pqc/bin/pip install dist/cryptoflex-0.5.5-py3-none-any.whl[pqc]
+          .sbom_pqc/bin/python -m pip check || { echo "PQC environment install failed"; exit 1; }
+          .sbom_tools/bin/cyclonedx-py environment .sbom_pqc/bin/python \
+            --pyproject pyproject.toml \
+            --mc-type library \
+            --schema-version 1.5 \
+            --output-reproducible \
+            --outfile dist/SBOM-pqc.json
+
+      - name: Normalize SBOMs (drop bootstrap packages, explicit empty leaf dependsOn)
+        run: |
+          .sbom_tools/bin/python scripts/normalize_sbom.py \
+            dist/SBOM.json dist/SBOM-pqc.json
+
+      - name: Validate SBOMs
+        run: |
+          .sbom_tools/bin/python scripts/verify_sbom.py \
+            --base dist/SBOM.json \
+            --pqc dist/SBOM-pqc.json \
+            --runtime-env .sbom_runtime \
+            --pqc-env .sbom_pqc
 
       - name: Generate SHA256SUMS.txt
         run: |
