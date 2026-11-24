@@ -6,7 +6,7 @@ This document specifies the packaging strategy and supply chain security roadmap
 
 ## 1. Current Packaging Model (Pure Python)
 
-`cryptoflex` is distributed as a **pure-Python package** (universal wheel `py3-none-any.whl` and source distribution `sdist`). 
+`cryptoflex` is distributed as a **pure-Python package** (universal wheel `py3-none-any.whl` and source distribution `sdist`).
 
 The library does not contain any native C extensions itself. It wraps the standard `cryptography` package for classical algorithms, and optionally interfaces with `liboqs-python` for post-quantum cryptography.
 
@@ -33,10 +33,10 @@ python -m build --sdist --wheel --outdir dist/
 ## 2. Supply Chain Security Features & Roadmap
 
 ### 2.1 Implemented Supply Chain Controls
-*   **Reproducibility Verification:** Automated double-build reproducibility checking via `scripts/verify_reproducibility.py`. CryptoFlex v0.5.4 is reproducible within the controlled GitHub Actions build environment using the pinned build toolchain (`pip==26.2.1`, `setuptools==84.0.0`, `wheel==0.48.0`, `build==1.6.0`) and fresh isolated build environments. The release hard gate verifies deterministic wheel output within the controlled build procedure, deterministic raw sdist output within the controlled build procedure, and parity between the verifier rebuild and the release-run reference artifacts. This verification does not constitute independent multi-machine reproduction, an independent cryptographic audit, or a formal supply-chain security certification.
-*   **SHA-256 Checksum Manifests:** `SHA256SUMS.txt` is generated in `dist/` for all release artifacts.
-*   **Software Bill of Materials (SBOM):** Release CI (`.github/workflows/build-wheels.yml`) automatically generates a CycloneDX 1.4 JSON SBOM (`dist/SBOM.json`) using `cyclonedx-bom==4.1.2`, covering the Python build environment. It is a build-environment SBOM, not a product/runtime SBOM, and excludes `cryptography`, `liboqs-python`, and native `liboqs`.
-*   **Build Provenance Attestation:** Automated GitHub Actions build provenance attestation via `actions/attest-build-provenance`.
+*   **Reproducibility Verification:** Automated double-build reproducibility checking via `scripts/verify_reproducibility.py`. Release builds are verified within the controlled GitHub Actions build environment using the pinned build toolchain (`pip==26.2.1`, `setuptools==84.0.0`, `wheel==0.48.0`, `build==1.6.0`) and fresh isolated build environments. The release hard gate verifies deterministic wheel output within the controlled build procedure, deterministic raw sdist output within the controlled build procedure, and parity between the verifier rebuild and the release-run reference artifacts. This verification reflects controlled pipeline determinism and does not constitute independent multi-machine reproduction, an independent cryptographic audit, or a formal supply-chain security certification.
+*   **SHA-256 Checksum Manifests:** `SHA256SUMS.txt` is generated in `dist/` covering all distribution artifacts, release metadata, and both runtime SBOMs.
+*   **Software Bill of Materials (SBOM):** Release CI (`.github/workflows/build-wheels.yml`) generates authoritative **CycloneDX 1.5 JSON Runtime SBOMs** for both classical (`dist/SBOM.json`) and PQC-enabled (`dist/SBOM-pqc.json`) runtime environments. The SBOMs are generated from clean environments installing the built wheel, normalized with `scripts/normalize_sbom.py` (removing bootstrap installer packages and establishing explicit leaf dependencies), and strictly validated with `scripts/verify_sbom.py` (verifying schema conformance, graph completeness, root reachability, and two-way runtime inventory reconciliation). For details, see [docs/SBOM.md](SBOM.md).
+*   **Build Provenance Attestation:** Automated GitHub Actions build provenance attestation via `actions/attest-build-provenance` covering all artifacts in `./dist/*`.
 
 ### 2.2 Future / Planned Enhancements
 *   **Platform-Specific Native Bundles:** If enterprise demand requires it, future releases may explore distributing self-contained binary wheels embedding pre-compiled `liboqs` shared objects (using `cibuildwheel`).
@@ -177,3 +177,41 @@ When collecting or submitting independent reproduction evidence, the following f
 * sdist hash matches: [YES / NO]
 * Result: [REPRODUCED / MISMATCH]
 ```
+
+---
+
+## 4. CryptoFlex v0.5.5 Candidate Build Evidence
+
+The following section documents the verified candidate build outputs from GitHub Actions release CI.
+
+> [!IMPORTANT]
+> **Candidate Build Status (Not a Published Release)**
+> The artifacts listed below were generated during candidate build validation on `main` via `workflow_dispatch` (Run ID: `45432803464`). They represent verified candidate-build artifacts and supply-chain references. They do **not** constitute a published GitHub Release or PyPI publication, and independent multi-machine reproduction has not yet been conducted for v0.5.5.
+
+### 4.1 Candidate Build Parameters
+* **Workflow:** Build Package (`.github/workflows/build-wheels.yml`)
+* **Run ID:** `45432803464`
+* **Trigger:** `workflow_dispatch`
+* **Branch:** `main`
+* **Candidate Commit SHA:** `f4bc71d2a55f6037585c19887901bff24653d760`
+* **Environment:** Ubuntu 24.04 (`ubuntu-24.04`), Python 3.11 (`actions/setup-python@v5`)
+* **Pinned Toolchain:**
+  * `pip==26.2.1`
+  * `build==1.6.0`
+  * `setuptools==84.0.0`
+  * `wheel==0.48.0`
+  * `cyclonedx-bom==4.1.2`
+  * `jsonschema==4.23.0`
+
+### 4.2 Candidate Artifact Hashes & Checksums
+All files generated into `./dist/` were verified by `scripts/verify_reproducibility.py` and `scripts/verify_sbom.py`, checksummed in `dist/SHA256SUMS.txt`, uploaded as `python-package-distributions`, and attested via GitHub Actions provenance:
+
+| Artifact File | Description | SHA-256 Checksum |
+| :--- | :--- | :--- |
+| `cryptoflex-0.5.5-py3-none-any.whl` | Universal pure-Python wheel | `ead679dfbdb529f4f63b5620c58c43afd0581398c9190a2339d8678403b6f5fe` |
+| `cryptoflex-0.5.5.tar.gz` | Source distribution (sdist) | `53624d33a671e8499e211e042a8a4505337d15a49dd45c022cdbb7c33881cd19` |
+| `dist/SBOM.json` | CycloneDX 1.5 Base Runtime SBOM | `78222038bfe31f944942fb6652444d0c3b0a58fbb76353a5814e9d8e041ff52f` |
+| `dist/SBOM-pqc.json` | CycloneDX 1.5 PQC Runtime SBOM | `c86db632b1ff170e36b2ff723b551bca329c0a518799e0ace8fc481c314d629f` |
+| `dist/RELEASE_METADATA.json` | Release metadata manifest | `d402d91120b48f7c06b9e4aeea1a44805418569cc987eb65cd889f8eaa8092b5` |
+| `dist/SHA256SUMS.txt` | Checksum manifest of all dist files | `6f687bca84348cef4635b475681eb7095b00a3866305f035b393c58fb2226d04` |
+| Provenance Attestation | SLSA build provenance | Attested via `actions/attest-build-provenance` on `./dist/*` |

@@ -5,16 +5,16 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 
-Version: 0.5.4
+Version: 0.5.5
 Status: RELEASE CANDIDATE / research prototype
 
 A local-first crypto-agility policy engine for Python.
 
 `cryptoflex` sits between your application and its cryptographic primitives. It selects the strongest combination of classical (X25519) and post-quantum (ML-KEM via [liboqs](https://github.com/open-quantum-safe/liboqs)) algorithms that the current machine can support, then hands you a single root key — without ever making a network call.
 
-> **Status:** security-hardened research prototype. CryptoFlex v0.5.4 has undergone an extensive maintainer-led security hardening and technical review covering its cryptographic API boundaries, hybrid key-combination design, header authentication, downgrade protection, streaming integrity, keystore protection, memory-handling practices, adversarial testing, and reproducibility controls. This review is not an independent third-party security audit or formal cryptographic proof. The project remains prepared for further independent security review.
+> **Status:** security-hardened research prototype. CryptoFlex v0.5.5 has undergone maintainer-led security hardening, technical reviews, and supply-chain integrity verification covering its cryptographic API boundaries, hybrid key-combination design, header authentication, downgrade protection, streaming integrity, keystore protection, memory-handling practices, adversarial testing, and reproducible build and SBOM verification. This review is not an independent third-party security audit or formal cryptographic proof. The project remains prepared for further independent security review.
 >
-> The historical [`TECHNICAL_REVIEW_1.md`](TECHNICAL_REVIEW_1.md) is a v0.1.0 AI-assisted self-review and should not be treated as the security assessment of v0.5.4. Current security posture, format specification, and threat model are documented in [`SECURITY_HARDENING.md`](SECURITY_HARDENING.md), [`docs/FORMAT_SPECIFICATION.md`](docs/FORMAT_SPECIFICATION.md), and [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).
+> The historical [`TECHNICAL_REVIEW_1.md`](TECHNICAL_REVIEW_1.md) is a v0.1.0 AI-assisted self-review and should not be treated as the security assessment of v0.5.5. Current security posture, format specification, and threat model are documented in [`SECURITY_HARDENING.md`](SECURITY_HARDENING.md), [`docs/FORMAT_SPECIFICATION.md`](docs/FORMAT_SPECIFICATION.md), and [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).
 
 ---
 
@@ -182,8 +182,12 @@ For complete technical details, see:
 
 ## Testing
 
-198 automated tests covering unit, integration, adversarial, property-based (Hypothesis), reproducibility, and migration cases (198 passed, 0 failed as of v0.5.4).
+CryptoFlex maintains automated test suites covering cryptographic operations, policy enforcement, authenticated header validation, keystore handling, streaming AEAD integrity, adversarial inputs, property-based cases (Hypothesis), migration, and SBOM validation.
 
+In GitHub Actions CI (`.github/workflows/tests.yml`), the test suite is validated across Python 3.10, 3.11, and 3.12, including:
+- A fast matrix test job running unit, integration, adversarial, and SBOM verifier tests with `CRYPTOFLEX_DISABLE_PQC=1`.
+- A real PQC test job (`test-with-real-pqc`) running on Python 3.12 that builds the native C `liboqs` library from source (pinned commit `5a1a854b0dc9f2141bdc771c555ee60c37950183`, tag 0.16.0), installs `liboqs-python==0.16.0`, and validates the full suite with native post-quantum primitives active.
+- A reproducibility verification job running `scripts/verify_reproducibility.py`.
 
 ```bash
 pip install -e ".[dev]"
@@ -191,13 +195,16 @@ pip install -e ".[dev]"
 # Without liboqs installed:
 CRYPTOFLEX_DISABLE_PQC=1 pytest -v
 
+# With liboqs installed (full PQC suite):
+pytest -v
+
 # End-to-end verification script:
 python verify_local.py
 ```
 
 ### Validation Results
 
-CryptoFlex includes automated tests covering cryptographic operations, policy enforcement, header validation, keystore handling, streaming integrity, adversarial cases, and integration behavior. The following visualization reflects the current locally executed validation results.
+CryptoFlex includes automated tests covering cryptographic operations, policy enforcement, header validation, keystore handling, streaming integrity, adversarial cases, and integration behavior. The following visualization reflects locally executed validation results.
 
 <p align="center">
   <img src="docs/results/validation-results.svg" alt="CryptoFlex Test and Verification Results" width="720">
@@ -213,17 +220,32 @@ python scripts/generate_validation_graph.py
 
 ### Reproducibility Scope
 
-CryptoFlex v0.5.4 is reproducible within the controlled GitHub Actions build environment using the pinned build toolchain and isolated build environments. The release hard gate verifies:
+CryptoFlex builds are reproducible within the controlled GitHub Actions build environment using the pinned build toolchain (`pip==26.2.1`, `setuptools==84.0.0`, `wheel==0.48.0`, `build==1.6.0`) and isolated build environments. The release hard gate verifies:
 - deterministic wheel output within the controlled build procedure
 - deterministic raw sdist output within the controlled build procedure
 - parity between the verifier rebuild and the release-run reference artifacts
 
-This verification does **not** constitute:
-- independent-machine reproduction
+This verification reflects **controlled in-pipeline reproducibility** on GitHub Actions runners. It does **not** constitute:
+- independent multi-machine reproduction
 - an independent cryptographic audit
 - a formal supply-chain security certification
 
 The repository provides a documented procedure for independent multi-machine reproduction in [docs/PACKAGING.md](docs/PACKAGING.md#3-independent-multi-machine-reproduction-procedure) and a reproduction helper in [`scripts/reproduce_release.py`](scripts/reproduce_release.py). Independent reproduction is considered demonstrated only when an external machine/environment produces matching artifacts for the specified release.
+
+---
+
+## Supply Chain & Software Bill of Materials (SBOM)
+
+CryptoFlex enforces strict supply-chain security controls during candidate package builds (`.github/workflows/build-wheels.yml`):
+
+- **CycloneDX 1.5 JSON SBOMs:** Two distinct runtime SBOMs are generated directly from isolated runtime environments installing the built wheel:
+  - `dist/SBOM.json` — Base Runtime SBOM (classical runtime dependencies).
+  - `dist/SBOM-pqc.json` — PQC Runtime SBOM (runtime dependencies including `liboqs-python`).
+- **Deterministic Normalization (`scripts/normalize_sbom.py`):** Strips non-runtime installer/bootstrap packages (`pip`, `setuptools`, `wheel`) and establishes explicit empty dependency arrays (`"dependsOn": []`) for terminal leaf components. Refuses normalization if any non-bootstrap package depends on a bootstrap package.
+- **Fail-Closed Verifier (`scripts/verify_sbom.py`):** Validates both SBOMs against the official CycloneDX 1.5 JSON Schema (Draft-07), enforces unique `bom-ref` identifiers, verifies complete dependency graph connectivity from root without orphans, confirms required direct runtime dependencies, and performs two-way set reconciliation against the target virtual environments via `pip list --format=json`.
+- **Integrity Manifests & Provenance:** Generates `dist/SHA256SUMS.txt` for all release artifacts and creates cryptographic build provenance attestations via GitHub Actions (`actions/attest-build-provenance`).
+
+For complete details, see [Software Bill of Materials (SBOM)](docs/SBOM.md) and [Packaging & Supply Chain Distribution](docs/PACKAGING.md).
 
 ---
 
@@ -260,5 +282,7 @@ MIT. See [LICENSE](LICENSE).
 - [Security Hardening Evidence](SECURITY_HARDENING.md)
 - [Security Policy](security.md)
 - [Changelog](CHANGELOG.md)
+- [Software Bill of Materials (SBOM)](docs/SBOM.md)
+- [Packaging & Supply Chain Distribution](docs/PACKAGING.md)
 - [Format & Cryptographic Specification](docs/FORMAT_SPECIFICATION.md)
 - [Threat Model & Security Analysis](docs/THREAT_MODEL.md)

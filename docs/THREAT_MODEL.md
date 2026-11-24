@@ -1,4 +1,6 @@
-# cryptoflex Threat Model & Security Analysis (v0.5.4)
+# cryptoflex Threat Model & Security Analysis (v0.5.5)
+
+> **Document Version:** v0.5.5 (aligned with package version 0.5.5; the underlying on-disk wire format version remains `FORMAT_VERSION = 2`).
 
 This document formalizes the security goals, attacker models, cryptographic invariants, and known operational limitations of `cryptoflex`.
 

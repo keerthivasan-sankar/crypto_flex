@@ -1,4 +1,6 @@
-# cryptoflex Format & Cryptographic Specification (v0.5.4)
+# cryptoflex Format & Cryptographic Specification (v0.5.5)
+
+> **Document Version:** v0.5.5 (aligned with package version 0.5.5; the underlying on-disk wire format version remains `FORMAT_VERSION = 2`).
 
 This document provides a formal technical specification of the data formats, key derivation mechanisms, and framing rules implemented by `cryptoflex`.
 
