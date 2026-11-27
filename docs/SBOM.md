@@ -20,7 +20,7 @@ The Base Runtime SBOM inventories the exact package tree installed when `pip ins
 * **Root Component:** `cryptoflex` (version `0.5.5`).
 * **Direct Runtime Dependencies:** `cryptography` (`>=50.0.0,<51.0.0`).
 * **Transitive Dependencies:** `cffi`, `pycparser`.
-* **Excluded Tooling:** Build and installer tooling (`pip`, `setuptools`, `wheel`, `build`) introduced by `python -m venv` is excluded by the normalizer because it does not constitute a runtime dependency of the packaged library.
+* **Excluded Tooling:** Installer tooling (`pip`, `setuptools`, `wheel`) introduced by `python -m venv` is excluded by the normalizer because it does not constitute a runtime dependency of the packaged library.
 
 ### 1.2 PQC Runtime SBOM (`dist/SBOM-pqc.json`)
 The PQC Runtime SBOM inventories the complete package tree installed when `pip install cryptoflex[pqc]` is executed in a clean virtual environment:
