@@ -12,13 +12,35 @@ numbers** that don't necessarily move together:
   change for anyone with existing encrypted files and will always be
   called out explicitly here.
 
-## [0.5.5] - 2026-10-10
+## [0.5.5] - Release Candidate
 
-### Release Candidate
-- Reproducibility tooling and artifact hash verification.
-- Windows certificate-bundle handling (see `scripts/reproduce_release.py`).
-- URL and redirect validation in the reproducibility workflow.
-- Packaging includes the `scripts*` package.
+### Supply Chain & SBOM Hardening
+- **CycloneDX 1.5 Runtime SBOM Generation**: Implemented separate generation of Base Runtime (`dist/SBOM.json`) and PQC Runtime (`dist/SBOM-pqc.json`) SBOMs in release CI (`.github/workflows/build-wheels.yml`), using clean isolated virtual environments (`.sbom_runtime` and `.sbom_pqc`) that install the built pure-Python wheel (`cryptoflex-0.5.5-py3-none-any.whl`).
+- **Deterministic SBOM Normalization (`scripts/normalize_sbom.py`)**:
+  - Removed installer/bootstrap packages (`pip`, `setuptools`, `wheel`) that are environment artifacts introduced by `python -m venv` rather than runtime application dependencies.
+  - Pruned dependency edges originating from bootstrap packages (e.g. `setuptools -> pip` introduced by setuptools testing metadata).
+  - Established explicit empty dependency arrays (`"dependsOn": []`) for terminal leaf packages (e.g. `pycparser`, `liboqs-python`) to conform to CycloneDX 1.5 dependency graph semantics.
+  - Added strict refusal (`NormalizationRefused`, exit code 2) if any non-bootstrap component depends on a bootstrap package, preventing inadvertent omission of true runtime dependencies.
+  - Guaranteed deterministic, idempotent formatting preserving key order, 2-space indentation, line endings, and trailing newlines.
+- **Fail-Closed SBOM Verifier (`scripts/verify_sbom.py`)**:
+  - Validates documents against the official CycloneDX 1.5 Draft-07 JSON schema (`scripts/bom-1.5.schema.json`), failing closed if `jsonschema` is unavailable.
+  - Validates unique component `bom-ref` registry and rejects duplicate or missing identifiers.
+  - Enforces dependency graph completeness: requires explicit dependency entries for all registered components and explicit `"dependsOn": []` for leaves.
+  - Validates graph reachability from the root component via BFS traversal, rejecting disconnected or orphan components.
+  - Enforces required direct runtime dependencies on root (`cryptography` for Base; `cryptography` and `liboqs-python` for PQC).
+  - Performs strict two-way inventory reconciliation against target environments via `pip list --format=json` (`installed_runtime == sbom_components`).
+  - Detects and rejects build/scanner tooling contamination (`SCANNER_PACKAGES`).
+- **CI Pipeline Integration & Enforcement**:
+  - Pinned SBOM tooling in `.github/workflows/build-wheels.yml` (`cyclonedx-bom==4.1.2`, `jsonschema==4.23.0`, `pip==26.2.1`).
+  - Added `pip install jsonschema==4.23.0` to CI test workflows (`.github/workflows/tests.yml`) across Python 3.10, 3.11, and 3.12 matrices.
+  - Enforced that both Base and PQC SBOMs must be generated, normalized, and verified before `SHA256SUMS.txt` generation and artifact upload.
+  - Added automated GitHub Actions build provenance attestations (`actions/attest-build-provenance`).
+
+### Build & Packaging Integrity
+- **Reproducibility Verification Hard Gate**: Verified byte-for-byte reproducibility of wheel and sdist outputs via `scripts/verify_reproducibility.py` within the controlled release pipeline.
+- **Release Metadata**: Automated generation of `dist/RELEASE_METADATA.json` binding commit SHA, commit timestamp (`SOURCE_DATE_EPOCH`), toolchain versions, and artifact hashes.
+- **Reproducibility Tooling & Diagnostics**: Updated `scripts/reproduce_release.py` with Windows certificate-bundle troubleshooting notes, URL/redirect validation, and packaging diagnostics.
+- **Candidate Build Validation**: Verified candidate build on `main` at commit `f4bc71d2a55f6037585c19887901bff24653d760` (Build Package run `45432803464`). Candidate artifacts generated and attested; not yet tagged or published as a final release.
 
 ## [0.5.4] - September 2026
 
