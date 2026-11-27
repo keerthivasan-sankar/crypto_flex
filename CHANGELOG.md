@@ -38,7 +38,7 @@ numbers** that don't necessarily move together:
 
 ### Build & Packaging Integrity
 - **Reproducibility Verification Hard Gate**: Verified byte-for-byte reproducibility of wheel and sdist outputs via `scripts/verify_reproducibility.py` within the controlled release pipeline.
-- **Release Metadata**: Automated generation of `dist/RELEASE_METADATA.json` binding commit SHA, commit timestamp (`SOURCE_DATE_EPOCH`), toolchain versions, and artifact hashes.
+- **Release Metadata**: Automated generation of `dist/metadata.json` binding commit SHA, commit timestamp (`SOURCE_DATE_EPOCH`), toolchain versions, and artifact hashes.
 - **Reproducibility Tooling & Diagnostics**: Updated `scripts/reproduce_release.py` with Windows certificate-bundle troubleshooting notes, URL/redirect validation, and packaging diagnostics.
 - **Candidate Build Validation**: Verified candidate build on `main` at commit `f4bc71d2a55f6037585c19887901bff24653d760` (Build Package run `45432803464`). Candidate artifacts generated and attested; not yet tagged or published as a final release.
 

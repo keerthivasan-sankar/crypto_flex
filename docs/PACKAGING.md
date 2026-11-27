@@ -180,13 +180,13 @@ When collecting or submitting independent reproduction evidence, the following f
 
 ---
 
-## 4. CryptoFlex v0.5.5 Candidate Build Evidence
+## 4. CryptoFlex v0.5.5 Historical Candidate Build Evidence (Run 45432803464)
 
-The following section documents the verified candidate build outputs from GitHub Actions release CI.
+The following section preserves the historical candidate build outputs from an earlier GitHub Actions release CI run on `main`.
 
 > [!IMPORTANT]
-> **Candidate Build Status (Not a Published Release)**
-> The artifacts listed below were generated during candidate build validation on `main` via `workflow_dispatch` (Run ID: `45432803464`). They represent verified candidate-build artifacts and supply-chain references. They do **not** constitute a published GitHub Release or PyPI publication, and independent multi-machine reproduction has not yet been conducted for v0.5.5.
+> **Historical Candidate Build Status (Commit `f4bc71d2a55f6037585c19887901bff24653d760`, Run `45432803464`)**
+> The Build Package workflow (`.github/workflows/build-wheels.yml`) supports both `push` on `v*` release tags and manual `workflow_dispatch` triggers. The artifacts and hashes below are **historical candidate-build evidence** from a manually dispatched `workflow_dispatch` run (Run `45432803464` at commit `f4bc71d2a55f6037585c19887901bff24653d760`). They are **not** the hashes of final-main local validation builds (such as commit `8d6dd3344428af8f784a70dfbddb884b7e50988e`), and they do **not** constitute an explicitly authorized tag-based release, published GitHub Release, or PyPI publication. Independent multi-machine reproduction has not yet been conducted for v0.5.5.
 
 ### 4.1 Candidate Build Parameters
 * **Workflow:** Build Package (`.github/workflows/build-wheels.yml`)
@@ -212,6 +212,6 @@ All files generated into `./dist/` were verified by `scripts/verify_reproducibil
 | `cryptoflex-0.5.5.tar.gz` | Source distribution (sdist) | `53624d33a671e8499e211e042a8a4505337d15a49dd45c022cdbb7c33881cd19` |
 | `dist/SBOM.json` | CycloneDX 1.5 Base Runtime SBOM | `78222038bfe31f944942fb6652444d0c3b0a58fbb76353a5814e9d8e041ff52f` |
 | `dist/SBOM-pqc.json` | CycloneDX 1.5 PQC Runtime SBOM | `c86db632b1ff170e36b2ff723b551bca329c0a518799e0ace8fc481c314d629f` |
-| `dist/RELEASE_METADATA.json` | Release metadata manifest | `d402d91120b48f7c06b9e4aeea1a44805418569cc987eb65cd889f8eaa8092b5` |
+| `dist/metadata.json` | Release metadata manifest | `d402d91120b48f7c06b9e4aeea1a44805418569cc987eb65cd889f8eaa8092b5` |
 | `dist/SHA256SUMS.txt` | Checksum manifest of all dist files | `6f687bca84348cef4635b475681eb7095b00a3866305f035b393c58fb2226d04` |
 | Provenance Attestation | SLSA build provenance | Attested via `actions/attest-build-provenance` on `./dist/*` |

@@ -204,10 +204,12 @@ python verify_local.py
 
 ### Validation Results
 
-CryptoFlex includes automated tests covering cryptographic operations, policy enforcement, header validation, keystore handling, streaming integrity, adversarial cases, and integration behavior. The following visualization reflects locally executed validation results.
+CryptoFlex includes automated tests covering cryptographic operations, policy enforcement, header validation, keystore handling, streaming integrity, adversarial cases, and integration behavior. The following visualization is a **historical v0.5.4 snapshot** (2026-10-04) reflecting locally executed validation results for that release, not v0.5.5 CI or local validation counts.
 
 <p align="center">
-  <img src="docs/results/validation-results.svg" alt="CryptoFlex Test and Verification Results" width="720">
+  <img src="docs/results/validation-results.svg" alt="Historical v0.5.4 CryptoFlex Test and Verification Results (2026-10-04)" width="720">
+  <br>
+  <em>Historical snapshot: v0.5.4 local validation results (2026-10-04).</em>
 </p>
 
 > Test results indicate implementation behavior under the tested cases; they do not constitute a cryptographic security proof or independent security audit.
