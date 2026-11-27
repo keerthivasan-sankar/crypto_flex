@@ -1,2 +1,4 @@
+# Historical v0.5.4 checksum manifest (retained for historical reference only).
+# Official v0.5.5 checksums are generated at build time in dist/SHA256SUMS.txt.
 E609A117A806562579EDFB574672166F64F9CC3038EF05F6212EBC1E3CE9AE73  cryptoflex-0.5.4-py3-none-any.whl
 9CB5D989C98B65924AC357B645A6279702FFE520449C90C483E417F572477DCE  cryptoflex-0.5.4.tar.gz

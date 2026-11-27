@@ -58,7 +58,7 @@ CryptoFlex v0.5.5 introduces enhanced build-integrity and software supply-chain 
 
 ### 5.3 Provenance and Release Hard Gates
 - Release workflow hard gate runs double-build reproducibility checking via `scripts/verify_reproducibility.py`.
-- Generates `dist/RELEASE_METADATA.json` binding commit SHA, timestamp (`SOURCE_DATE_EPOCH`), and toolchain pins.
+- Generates `dist/metadata.json` binding commit SHA, timestamp (`SOURCE_DATE_EPOCH`), and toolchain pins.
 - Computes `dist/SHA256SUMS.txt` covering all distribution artifacts, metadata, and both validated SBOMs.
 - Attests cryptographic build provenance using GitHub Actions (`actions/attest-build-provenance`).
 
